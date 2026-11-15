@@ -1,0 +1,187 @@
+name: conexa-loadtest
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: conexa_loadtest
+      POSTGRES_USER: conexa_loadtest
+      POSTGRES_PASSWORD: ${LOADTEST_DB_PASSWORD:?Run scripts/loadtest-webchat.sh init first}
+    volumes:
+      - loadtest_pgdata:/var/lib/postgresql/data
+    networks:
+      - isolated
+    mem_limit: 1g
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U conexa_loadtest -d conexa_loadtest"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "192mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - loadtest_redisdata:/data
+    networks:
+      - isolated
+    mem_limit: 256m
+    cpus: 0.25
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./loadtest.env
+    environment:
+      APP_ENV: loadtest
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:18080
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: conexa_loadtest
+      DB_USERNAME: conexa_loadtest
+      DB_PASSWORD: ${LOADTEST_DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      CACHE_STORE: redis
+      CACHE_PREFIX: conexa_loadtest_
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: conexa-loadtest
+      REVERB_APP_KEY: conexa-loadtest-key
+      REVERB_APP_SECRET: conexa-loadtest-secret
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: 8080
+      PHP_FPM_MAX_CHILDREN: 12
+      PHP_FPM_START_SERVERS: 6
+      PHP_FPM_MIN_SPARE_SERVERS: 3
+      PHP_FPM_MAX_SPARE_SERVERS: 6
+      WEBCHAT_RATE_LIMIT_SESSION: 5000
+      WEBCHAT_RATE_LIMIT_MESSAGES: 5000
+      WEBCHAT_RATE_LIMIT_EMBED: 5000
+      LOG_CHANNEL: stderr
+    command:
+      - /bin/sh
+      - -lc
+      - php artisan migrate --force --no-interaction && php artisan db:seed --force --no-interaction && exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - isolated
+    mem_limit: 2g
+    cpus: 2.0
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8000/api/health/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 90s
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./loadtest.env
+    environment:
+      APP_ENV: loadtest
+      APP_DEBUG: "false"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: conexa_loadtest
+      DB_USERNAME: conexa_loadtest
+      DB_PASSWORD: ${LOADTEST_DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      CACHE_STORE: redis
+      CACHE_PREFIX: conexa_loadtest_
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: conexa-loadtest
+      REVERB_APP_KEY: conexa-loadtest-key
+      REVERB_APP_SECRET: conexa-loadtest-secret
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: 8080
+      LOG_CHANNEL: stderr
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=1", "--tries=1", "--timeout=120"]
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - isolated
+    mem_limit: 768m
+    cpus: 0.5
+
+  reverb:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    env_file:
+      - ./loadtest.env
+    environment:
+      APP_ENV: loadtest
+      APP_DEBUG: "false"
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: conexa_loadtest
+      DB_USERNAME: conexa_loadtest
+      DB_PASSWORD: ${LOADTEST_DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ""
+      CACHE_STORE: redis
+      CACHE_PREFIX: conexa_loadtest_
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: conexa-loadtest
+      REVERB_APP_KEY: conexa-loadtest-key
+      REVERB_APP_SECRET: conexa-loadtest-secret
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: 8080
+      LOG_CHANNEL: stderr
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - isolated
+    mem_limit: 512m
+    cpus: 0.5
+
+networks:
+  isolated:
+    name: conexa-loadtest-isolated
+    internal: true
+
+volumes:
+  loadtest_pgdata:
+    name: conexa_loadtest_pgdata
+  loadtest_redisdata:
+    name: conexa_loadtest_redisdata

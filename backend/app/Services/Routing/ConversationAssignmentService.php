@@ -1,0 +1,225 @@
+<?php
+
+namespace App\Services\Routing;
+
+use App\Enums\ConversationStatus;
+use App\Events\ConversationAssigned;
+use App\Events\ConversationStatusChanged;
+use App\Events\ConversationUpdated;
+use App\Events\MessageCreated;
+use App\Models\Conversation;
+use App\Models\ConversationAssignment;
+use App\Models\User;
+use App\Services\AuditLogger;
+use App\Services\Presence\AgentAvailabilityService;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+class ConversationAssignmentService
+{
+    public const DEFAULT_MAX_CONCURRENT_CONVERSATIONS = 5;
+
+    public const MAX_CONCURRENT_CONVERSATIONS = 5;
+
+    public const ELIGIBLE_ROLES = ['agent', 'admin', 'supervisor', 'super_admin'];
+
+    /**
+     * Retrieves the collection of online, non-saturated agent candidates eligible for assignment.
+     * By default, returns all eligible agents with available capacity for a uniform random draw.
+     * When strategy is 'least_busy', filters down to the agents with the minimum current active load.
+     *
+     * @return \Illuminate\Support\Collection<int, User>
+     */
+    public function getEligibleCandidates(Conversation $conversation, string $strategy = 'random'): Collection
+    {
+        // 1. Get online agents with agent or admin roles
+        $onlineAgents = AgentAvailabilityService::getOnlineAgents(self::ELIGIBLE_ROLES);
+
+        if ($onlineAgents->isEmpty()) {
+            return collect();
+        }
+
+        $onlineAgents->loadMissing(['roles', 'channels:id']);
+        $onlineAgents = $onlineAgents->filter(
+            fn (User $agent) => $agent->canAccessChannel((string) $conversation->channel_id)
+        )->values();
+
+        // 2. Calculate active assigned conversations per agent
+        $agentIds = $onlineAgents->pluck('id')->all();
+
+        $activeCounts = Conversation::query()
+            ->where('is_simulation', false)
+            ->where('status', ConversationStatus::ASSIGNED)
+            ->whereIn('assigned_user_id', $agentIds)
+            ->selectRaw('assigned_user_id, count(*) as count')
+            ->groupBy('assigned_user_id')
+            ->pluck('count', 'assigned_user_id')
+            ->all();
+
+        // 3. Capacity filter: discard any agent with <= 0 capacity or >= dynamic role capacity
+        $eligibleAgents = $onlineAgents->filter(function (User $agent) use ($activeCounts) {
+            $maxCapacity = $agent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
+
+            if ($maxCapacity <= 0) {
+                return false;
+            }
+
+            $count = (int) ($activeCounts[$agent->id] ?? 0);
+
+            return $count < $maxCapacity;
+        })->values();
+
+        if ($eligibleAgents->isEmpty()) {
+            return collect();
+        }
+
+        // 4. Selection strategy: uniform random across all eligible agents with capacity (default),
+        // or least_busy when explicitly specified.
+        if ($strategy === 'least_busy') {
+            $minCount = $eligibleAgents->min(fn (User $agent) => (int) ($activeCounts[$agent->id] ?? 0));
+
+            return $eligibleAgents->filter(
+                fn (User $agent) => ((int) ($activeCounts[$agent->id] ?? 0)) === $minCount
+            )->values();
+        }
+
+        return $eligibleAgents;
+    }
+
+    public function autoAssign(Conversation $conversation, string $strategy = 'random'): ?User
+    {
+        $candidates = $this->getEligibleCandidates($conversation, $strategy);
+
+        if ($candidates->isEmpty()) {
+            $this->markAsWaiting($conversation);
+
+            return null;
+        }
+
+        /** @var User $selectedAgent */
+        $selectedAgent = $candidates->count() === 1
+            ? $candidates->first()
+            : $candidates->random();
+
+        // 5. Assignment
+        return $this->assignToAgent($conversation, $selectedAgent, 'Auto Assignment');
+    }
+
+    /**
+     * Assigns the oldest waiting conversation when quota is freed (e.g. after a conversation closes).
+     */
+    public function assignWaitingOnQuotaFreed(?User $freedAgent = null): ?Conversation
+    {
+        $waitingConversation = Conversation::where('is_simulation', false)
+            ->where('status', ConversationStatus::WAITING_AGENT)
+            ->whereNull('assigned_user_id')
+            ->orderBy('created_at', 'asc')
+            ->first();
+
+        if (! $waitingConversation) {
+            return null;
+        }
+
+        // If the freed agent is provided, online, and still has capacity, assign directly
+        if ($freedAgent && $freedAgent->is_active) {
+            $isOnline = AgentAvailabilityService::getOnlineAgents(self::ELIGIBLE_ROLES)
+                ->contains('id', $freedAgent->id);
+
+            if ($isOnline) {
+                $freedAgent->loadMissing('roles');
+                $activeCount = Conversation::where('is_simulation', false)
+                    ->where('status', ConversationStatus::ASSIGNED)
+                    ->where('assigned_user_id', $freedAgent->id)
+                    ->count();
+
+                $maxCapacity = $freedAgent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
+
+                if ($maxCapacity > 0 && $activeCount < $maxCapacity) {
+                    $this->assignToAgent($waitingConversation, $freedAgent, 'Freed-quota auto-assignment');
+
+                    return $waitingConversation;
+                }
+            }
+        }
+
+        // Fallback: run general auto-assignment for the waiting conversation
+        $this->autoAssign($waitingConversation);
+
+        return $waitingConversation;
+    }
+
+    /**
+     * Explicitly marks a conversation as waiting_agent with no assigned user.
+     */
+    protected function markAsWaiting(Conversation $conversation): void
+    {
+        if ($conversation->status !== ConversationStatus::WAITING_AGENT || $conversation->assigned_user_id !== null) {
+            $conversation->update([
+                'status' => ConversationStatus::WAITING_AGENT,
+                'assigned_user_id' => null,
+            ]);
+        }
+    }
+
+    /**
+     * Executes the assignment to a specific agent and dispatches real-time broadcast events.
+     */
+    public function assignToAgent(Conversation $conversation, User $agent, string $reason = 'Auto-assigned'): User
+    {
+        return DB::transaction(function () use ($conversation, $agent, $reason) {
+            /** @var Conversation $locked */
+            $locked = Conversation::where('id', $conversation->id)->lockForUpdate()->firstOrFail();
+
+            $previousAssignedUserId = $locked->assigned_user_id;
+
+            // Close existing active assignments
+            ConversationAssignment::where('conversation_id', $locked->id)
+                ->whereNull('unassigned_at')
+                ->update(['unassigned_at' => now()]);
+
+            // Create assignment record
+            ConversationAssignment::create([
+                'conversation_id' => $locked->id,
+                'assigned_user_id' => $agent->id,
+                'assigned_by_user_id' => null,
+                'assigned_at' => now(),
+                'reason' => $reason,
+            ]);
+
+            $locked->update([
+                'assigned_user_id' => $agent->id,
+                'status' => ConversationStatus::ASSIGNED,
+            ]);
+
+            $fresh = $locked->fresh(['assignedUser', 'channel', 'contact', 'assignments']);
+
+            DB::afterCommit(function () use ($fresh, $agent, $reason) {
+                broadcast(new ConversationUpdated($fresh));
+                broadcast(new ConversationAssigned($fresh, $agent, $reason));
+                broadcast(new ConversationStatusChanged($fresh));
+
+                $latestMessage = $fresh->messages()->latest('sent_at')->first();
+                if ($latestMessage) {
+                    broadcast(new MessageCreated($latestMessage));
+                }
+            });
+
+            AuditLogger::log(
+                action: 'conversation.auto_assign',
+                entityType: 'Conversation',
+                entityId: (string) $locked->id,
+                metadata: [
+                    'assigned_user_id' => $agent->id,
+                    'previous_assigned_user_id' => $previousAssignedUserId,
+                    'reason' => $reason,
+                ]
+            );
+
+            // Synchronize the passed model instance
+            $conversation->assigned_user_id = $agent->id;
+            $conversation->status = ConversationStatus::ASSIGNED;
+
+            return $agent;
+        });
+    }
+}

@@ -1,0 +1,299 @@
+name: intera
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: intera_postgres
+    restart: unless-stopped
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c work_mem=8MB
+      -c maintenance_work_mem=64MB
+      -c effective_cache_size=768MB
+      -c synchronous_commit=local
+      -c statement_timeout=30000
+      -c lock_timeout=10000
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-intera}
+      POSTGRES_USER: ${DB_USERNAME:-intera}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-intera_secret}
+    ports:
+      - "${DB_PORT:-55433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-intera} -d ${DB_DATABASE:-intera}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: intera_redis
+    restart: unless-stopped
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save 900 1
+      --save 300 10
+      --save 60 10000
+      --stop-writes-on-bgsave-error no
+    ports:
+      - "${REDIS_PORT:-56380}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: intera_backend
+    restart: unless-stopped
+    environment:
+      APP_NAME: Intera
+      APP_ENV: ${APP_ENV:-production}
+      APP_KEY: ${APP_KEY:?APP_KEY must be set in .env}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_VERSION: ${APP_VERSION:-1.0.0-rc.2}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DISCORD_ALERT_TIMEOUT_SECONDS: ${DISCORD_ALERT_TIMEOUT_SECONDS:-5}
+      META_TOKEN_CHECK_TIMEOUT_SECONDS: ${META_TOKEN_CHECK_TIMEOUT_SECONDS:-10}
+      META_TOKEN_ALERT_TIMEZONE: ${META_TOKEN_ALERT_TIMEZONE:-America/Costa_Rica}
+      TRUSTED_PROXIES: ${TRUSTED_PROXIES:-127.0.0.1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,100.64.0.0/10}
+      SESSION_SECURE_COOKIE: ${SESSION_SECURE_COOKIE:-false}
+      SESSION_DOMAIN: ${SESSION_DOMAIN:-}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-intera}
+      DB_USERNAME: ${DB_USERNAME:-intera}
+      DB_PASSWORD: ${DB_PASSWORD:-intera_secret}
+      DB_STATEMENT_TIMEOUT: ${DB_STATEMENT_TIMEOUT:-30000}
+      DB_LOCK_TIMEOUT: ${DB_LOCK_TIMEOUT:-10000}
+      PHP_FPM_MAX_CHILDREN: ${PHP_FPM_MAX_CHILDREN:-40}
+      PHP_FPM_START_SERVERS: ${PHP_FPM_START_SERVERS:-10}
+      PHP_FPM_MIN_SPARE_SERVERS: ${PHP_FPM_MIN_SPARE_SERVERS:-8}
+      PHP_FPM_MAX_SPARE_SERVERS: ${PHP_FPM_MAX_SPARE_SERVERS:-20}
+      PHP_FPM_MAX_REQUESTS: ${PHP_FPM_MAX_REQUESTS:-1000}
+      WEBCHAT_RATE_LIMIT_SESSION: ${WEBCHAT_RATE_LIMIT_SESSION:-120}
+      WEBCHAT_RATE_LIMIT_MESSAGES: ${WEBCHAT_RATE_LIMIT_MESSAGES:-120}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: ${REVERB_APP_ID:-intera}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-intera_key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-intera_secret}
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+      SANCTUM_STATEFUL_DOMAINS: ${SANCTUM_STATEFUL_DOMAINS:-localhost,localhost:3000,127.0.0.1,127.0.0.1:3000,localhost:8000,127.0.0.1:8000,localhost:5173,127.0.0.1:5173,192.168.*,10.*,100.*,*.ts.net,172.16.*,172.17.*,172.18.*,172.19.*,172.20.*,172.21.*,172.22.*,172.23.*,172.24.*,172.25.*,172.26.*,172.27.*,172.28.*,172.29.*,172.30.*,172.31.*}
+      INITIAL_ADMIN_EMAIL: ${INITIAL_ADMIN_EMAIL:-}
+      INITIAL_ADMIN_NAME: ${INITIAL_ADMIN_NAME:-}
+      INITIAL_ADMIN_PASSWORD: ${INITIAL_ADMIN_PASSWORD:-}
+    ports:
+      - "${BACKEND_PORT:-8100}:8000"
+    volumes:
+      - storage_data:/var/www/html/storage/app/public
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  reverb:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: intera_reverb
+    restart: unless-stopped
+    command: ["php", "artisan", "reverb:start", "--host=0.0.0.0", "--port=8080"]
+    environment:
+      APP_NAME: Intera
+      APP_ENV: ${APP_ENV:-production}
+      APP_KEY: ${APP_KEY:?APP_KEY must be set in .env}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-intera}
+      DB_USERNAME: ${DB_USERNAME:-intera}
+      DB_PASSWORD: ${DB_PASSWORD:-intera_secret}
+      DB_STATEMENT_TIMEOUT: ${DB_STATEMENT_TIMEOUT:-30000}
+      DB_LOCK_TIMEOUT: ${DB_LOCK_TIMEOUT:-10000}
+      PHP_FPM_MAX_CHILDREN: ${PHP_FPM_MAX_CHILDREN:-40}
+      PHP_FPM_START_SERVERS: ${PHP_FPM_START_SERVERS:-10}
+      PHP_FPM_MIN_SPARE_SERVERS: ${PHP_FPM_MIN_SPARE_SERVERS:-8}
+      PHP_FPM_MAX_SPARE_SERVERS: ${PHP_FPM_MAX_SPARE_SERVERS:-20}
+      PHP_FPM_MAX_REQUESTS: ${PHP_FPM_MAX_REQUESTS:-1000}
+      WEBCHAT_RATE_LIMIT_SESSION: ${WEBCHAT_RATE_LIMIT_SESSION:-120}
+      WEBCHAT_RATE_LIMIT_MESSAGES: ${WEBCHAT_RATE_LIMIT_MESSAGES:-120}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: ${REVERB_APP_ID:-intera}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-intera_key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-intera_secret}
+      REVERB_SERVER_HOST: 0.0.0.0
+      REVERB_SERVER_PORT: 8080
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 8080 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  scheduler:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: intera_scheduler
+    restart: unless-stopped
+    command: ["php", "artisan", "schedule:work"]
+    environment:
+      APP_NAME: Intera
+      APP_ENV: ${APP_ENV:-production}
+      APP_KEY: ${APP_KEY:?APP_KEY must be set in .env}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DISCORD_ALERT_TIMEOUT_SECONDS: ${DISCORD_ALERT_TIMEOUT_SECONDS:-5}
+      META_TOKEN_CHECK_TIMEOUT_SECONDS: ${META_TOKEN_CHECK_TIMEOUT_SECONDS:-10}
+      META_TOKEN_ALERT_TIMEZONE: ${META_TOKEN_ALERT_TIMEZONE:-America/Costa_Rica}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-intera}
+      DB_USERNAME: ${DB_USERNAME:-intera}
+      DB_PASSWORD: ${DB_PASSWORD:-intera_secret}
+      DB_STATEMENT_TIMEOUT: ${DB_STATEMENT_TIMEOUT:-30000}
+      DB_LOCK_TIMEOUT: ${DB_LOCK_TIMEOUT:-10000}
+      PHP_FPM_MAX_CHILDREN: ${PHP_FPM_MAX_CHILDREN:-40}
+      PHP_FPM_START_SERVERS: ${PHP_FPM_START_SERVERS:-10}
+      PHP_FPM_MIN_SPARE_SERVERS: ${PHP_FPM_MIN_SPARE_SERVERS:-8}
+      PHP_FPM_MAX_SPARE_SERVERS: ${PHP_FPM_MAX_SPARE_SERVERS:-20}
+      PHP_FPM_MAX_REQUESTS: ${PHP_FPM_MAX_REQUESTS:-1000}
+      WEBCHAT_RATE_LIMIT_SESSION: ${WEBCHAT_RATE_LIMIT_SESSION:-120}
+      WEBCHAT_RATE_LIMIT_MESSAGES: ${WEBCHAT_RATE_LIMIT_MESSAGES:-120}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: ${REVERB_APP_ID:-intera}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-intera_key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-intera_secret}
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: intera_worker
+    restart: unless-stopped
+    command: ["php", "artisan", "queue:work", "redis", "--sleep=3", "--tries=3", "--max-time=3600", "--timeout=120"]
+    environment:
+      APP_NAME: Intera
+      APP_ENV: ${APP_ENV:-production}
+      APP_KEY: ${APP_KEY:?APP_KEY must be set in .env}
+      APP_DEBUG: ${APP_DEBUG:-false}
+      APP_VERSION: ${APP_VERSION:-1.0.0-rc.2}
+      APP_URL: ${APP_URL:-http://localhost:8000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      LOG_CHANNEL: ${LOG_CHANNEL:-stderr}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-intera}
+      DB_USERNAME: ${DB_USERNAME:-intera}
+      DB_PASSWORD: ${DB_PASSWORD:-intera_secret}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      CACHE_STORE: redis
+      SESSION_DRIVER: redis
+      QUEUE_CONNECTION: redis
+      BROADCAST_CONNECTION: reverb
+      REVERB_APP_ID: ${REVERB_APP_ID:-intera}
+      REVERB_APP_KEY: ${REVERB_APP_KEY:-intera_key}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET:-intera_secret}
+      REVERB_HOST: reverb
+      REVERB_PORT: 8080
+      REVERB_SCHEME: http
+    volumes:
+      - storage_data:/var/www/html/storage/app/public
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f '^php artisan queue:work' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_REVERB_APP_KEY: ${REVERB_APP_KEY:-intera_key}
+    container_name: intera_frontend
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3100}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+      reverb:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  redis_data:
+  storage_data:

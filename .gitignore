@@ -1,0 +1,46 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# Environment files
+.env
+.env.*
+!.env.example
+!**/.env.example
+.env.backup
+.env.production
+.env.local
+*.env
+
+# Dependencies
+node_modules/
+/backend/vendor/
+/frontend/node_modules/
+
+# Build outputs
+/backend/public/build/
+/frontend/dist/
+
+/backend/bootstrap/cache/*
+!/backend/bootstrap/cache/.gitignore
+/backend/storage/*.key
+/backend/storage/framework/cache/data/*
+/backend/storage/framework/sessions/*
+/backend/storage/framework/views/*
+/backend/storage/logs/*
+
+# IDEs
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Backups
+/backups/
+/storage/
+*.dump
+*.sha256
+/.loadtest-results/
+/output/
+/tmp/
+/AGENTS.md
