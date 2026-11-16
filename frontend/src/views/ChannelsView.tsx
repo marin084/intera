@@ -53,6 +53,8 @@ export const ChannelsView: React.FC = () => {
   const [allowedOrigins, setAllowedOrigins] = useState('http://localhost:3000\nhttp://localhost:5173\nhttp://localhost:8080');
   const [accentColor, setAccentColor] = useState('#5d8f82');
   const [launcherPosition, setLauncherPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
+  const [webchatInstallMode, setWebchatInstallMode] = useState<'floating' | 'fullscreen'>('floating');
+  const [copiedFullPageUrlId, setCopiedFullPageUrlId] = useState<string | null>(null);
 
   // WhatsApp & Meta specific states
   const [phoneNumberId, setPhoneNumberId] = useState('');
@@ -224,17 +226,43 @@ export const ChannelsView: React.FC = () => {
     return `<script\n  src="${origin}/widget/conexa.js"\n  data-channel="${publicKey}"\n  async>\n</script>`;
   };
 
-  const handleCopyCode = async (channelId: string, publicKey?: string) => {
+  const getFullPageWebchatUrl = (publicKey?: string) => {
+    if (!publicKey) return '';
+    return `${window.location.origin}/widget.html?channel=${encodeURIComponent(publicKey)}`;
+  };
+
+  const getFullPageEmbedCode = (publicKey?: string) => {
+    const url = getFullPageWebchatUrl(publicKey);
+    if (!url) return '';
+    return `<iframe\n  src="${url}"\n  title="Chat de soporte"\n  style="display:block;width:100%;height:100vh;height:100dvh;min-height:560px;border:0;"\n  allow="clipboard-write"\n></iframe>`;
+  };
+
+  const getWebchatInstallCode = (publicKey?: string, mode = webchatInstallMode) =>
+    mode === 'fullscreen' ? getFullPageEmbedCode(publicKey) : getEmbedCode(publicKey);
+
+  const handleCopyCode = async (channelId: string, publicKey?: string, mode: 'floating' | 'fullscreen' = 'floating') => {
     if (!publicKey) return;
+    const code = getWebchatInstallCode(publicKey, mode);
     try {
-      const code = getEmbedCode(publicKey);
       await navigator.clipboard.writeText(code);
       setCopiedChannelId(channelId);
       setTimeout(() => {
         setCopiedChannelId(null);
       }, 2500);
     } catch {
-      prompt('Copie el código de instalación manual:', getEmbedCode(publicKey));
+      prompt('Copie el código de instalación manual:', code);
+    }
+  };
+
+  const handleCopyFullPageUrl = async (channelId: string, publicKey?: string) => {
+    const url = getFullPageWebchatUrl(publicKey);
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedFullPageUrlId(channelId);
+      setTimeout(() => setCopiedFullPageUrlId(null), 2500);
+    } catch {
+      prompt('Copie el enlace del Webchat completo:', url);
     }
   };
 
@@ -308,6 +336,7 @@ export const ChannelsView: React.FC = () => {
 
   const handleOpenEdit = (channel: Channel) => {
     setEditingChannel(channel);
+    setWebchatInstallMode('floating');
     setChannelFormDirty(false);
     setConfirmDiscardChannelForm(false);
     setName(channel.name);
@@ -2509,15 +2538,62 @@ export const ChannelsView: React.FC = () => {
                         <button
                           type="button"
                           className="btn btn-sm btn-secondary"
-                          onClick={() => handleCopyCode(editingChannel.id, editingChannel.webchat_settings?.public_key)}
+                          onClick={() => handleCopyCode(editingChannel.id, editingChannel.webchat_settings?.public_key, webchatInstallMode)}
                           style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
                         >
                           {copiedChannelId === editingChannel.id ? '¡Copiado!' : 'Copiar código'}
                         </button>
                       </div>
+
+                      <div role="group" aria-label="Formato de instalación del Webchat" style={{ display: 'flex', gap: '0.4rem', flexWrap: 'wrap', marginBottom: '0.65rem' }}>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${webchatInstallMode === 'floating' ? 'btn-primary' : 'btn-secondary'}`}
+                          aria-pressed={webchatInstallMode === 'floating'}
+                          onClick={() => setWebchatInstallMode('floating')}
+                        >
+                          Widget flotante
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-sm ${webchatInstallMode === 'fullscreen' ? 'btn-primary' : 'btn-secondary'}`}
+                          aria-pressed={webchatInstallMode === 'fullscreen'}
+                          onClick={() => setWebchatInstallMode('fullscreen')}
+                        >
+                          Pantalla completa
+                        </button>
+                      </div>
+
+                      <p style={{ margin: '0 0 0.5rem', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                        {webchatInstallMode === 'fullscreen'
+                          ? 'Incrusta el chat ocupando todo el espacio visible de la página.'
+                          : 'Agrega un botón flotante que abre el chat sobre tu página.'}
+                      </p>
                       <pre style={{ margin: 0, fontSize: '0.75rem', background: 'white', padding: '0.5rem', borderRadius: '4px', border: '1px solid #d9e3de', overflowX: 'auto' }}>
-                        {getEmbedCode(editingChannel.webchat_settings?.public_key)}
+                        {getWebchatInstallCode(editingChannel.webchat_settings?.public_key)}
                       </pre>
+
+                      {webchatInstallMode === 'fullscreen' && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap', marginTop: '0.65rem' }}>
+                          <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>Enlace directo:</span>
+                          <a
+                            href={getFullPageWebchatUrl(editingChannel.webchat_settings.public_key)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ fontSize: '0.75rem', overflowWrap: 'anywhere' }}
+                          >
+                            Abrir Webchat completo <ExternalLink size={12} style={{ verticalAlign: 'middle' }} />
+                          </a>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => handleCopyFullPageUrl(editingChannel.id, editingChannel.webchat_settings?.public_key)}
+                            style={{ fontSize: '0.75rem', padding: '0.2rem 0.5rem' }}
+                          >
+                            {copiedFullPageUrlId === editingChannel.id ? '¡Enlace copiado!' : 'Copiar enlace'}
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
