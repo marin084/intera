@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useLayoutEffect, Suspense, lazy } from 'react';
 import { AuthProvider } from './context/AuthContext';
 import { useAuth } from './context/useAuth';
 import { ToastProvider } from './context/ToastContext';
@@ -155,9 +155,30 @@ const MainApp: React.FC = () => {
     return parsed?.flowId;
   });
 
+  // Keep the login URL clean and discard any protected route requested without a session.
+  useLayoutEffect(() => {
+    if (isLoading || isAuthenticated) return;
+    if (window.location.pathname === '/' && !window.location.search && !window.location.hash) return;
+
+    window.history.replaceState(null, '', '/');
+    setCurrentTab('conversations');
+    setEditorRoute(null);
+    setAnalyticsFlowId(undefined);
+  }, [isAuthenticated, isLoading]);
+
   // Sync route on popstate (browser back/forward)
   useEffect(() => {
     const handlePopState = () => {
+      if (!isLoading && !isAuthenticated) {
+        if (window.location.pathname !== '/' || window.location.search || window.location.hash) {
+          window.history.replaceState(null, '', '/');
+        }
+        setCurrentTab('conversations');
+        setEditorRoute(null);
+        setAnalyticsFlowId(undefined);
+        return;
+      }
+
       const parsed = parseEditorPath(window.location.pathname);
       setEditorRoute(parsed);
       const parsedAnalytics = parseAnalyticsPath(window.location.pathname);
@@ -172,7 +193,7 @@ const MainApp: React.FC = () => {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  }, [isAuthenticated, isLoading]);
 
   const canAccessTab = (tab: string) => {
     if (tab === 'account') return true;
