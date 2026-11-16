@@ -15,19 +15,42 @@ export interface EchoOptions {
   extraHeaders?: Record<string, string>;
 }
 
+let appKeyPromise: Promise<string> | null = null;
+
+async function getReverbAppKey(): Promise<string> {
+  if (!appKeyPromise) {
+    appKeyPromise = fetch('/api/v1/public/realtime/config', {
+      headers: { Accept: 'application/json' },
+      credentials: 'same-origin',
+    })
+      .then(async (response) => {
+        if (response.ok) {
+          const payload = await response.json();
+          if (typeof payload?.data?.app_key === 'string' && payload.data.app_key.trim()) {
+            return payload.data.app_key.trim();
+          }
+        }
+        return import.meta.env.VITE_REVERB_APP_KEY || 'intera_key';
+      })
+      .catch(() => import.meta.env.VITE_REVERB_APP_KEY || 'intera_key');
+  }
+
+  return appKeyPromise;
+}
+
 function getXsrfToken(): string | null {
   const match = document.cookie.match(/XSRF-TOKEN=([^;]+)/);
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function createEcho(options: EchoOptions): Echo<any> {
+export async function createEcho(options: EchoOptions): Promise<Echo<any>> {
   const isHttps = window.location.protocol === 'https:';
   const host = window.location.hostname;
   const port = window.location.port
     ? Number(window.location.port)
     : (isHttps ? 443 : 80);
 
-  const key = import.meta.env.VITE_REVERB_APP_KEY || 'intera_key';
+  const key = await getReverbAppKey();
 
   return new Echo({
     broadcaster: 'reverb',

@@ -45,6 +45,16 @@ Route::prefix('v1')->group(function () {
     // Public Auth
     Route::post('/auth/login', [AuthController::class, 'login']);
 
+    // The Reverb app key is public by design. Serve the backend's configured
+    // value at runtime so the browser always connects with the same key.
+    Route::get('/public/realtime/config', static function () {
+        return response()->json([
+            'data' => [
+                'app_key' => config('reverb.apps.apps.0.key'),
+            ],
+        ])->header('Cache-Control', 'no-store');
+    });
+
     // Public Webhooks API (WhatsApp Cloud API / Meta Graph API)
     Route::prefix('public/webhooks/whatsapp')->group(function () {
         Route::get('/{channel}', [WhatsAppWebhookController::class, 'verify']);

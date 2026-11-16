@@ -160,7 +160,8 @@ export const ConversationsView: React.FC = () => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedAgentFilter, setSelectedAgentFilter] = useState<string>(inboxPreferences.selectedAgentFilter || 'all');
   const [selectedChannelFilter, setSelectedChannelFilter] = useState<string>(inboxPreferences.selectedChannelFilter || 'all');
-  const [realtimeActive, setRealtimeActive] = useState(false);
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
+  const [echoReadyVersion, setEchoReadyVersion] = useState(0);
   const [currentPage, setCurrentPage] = useState<number>(Math.max(1, Number(inboxPreferences.currentPage) || 1));
   const [lastPage, setLastPage] = useState(1);
   const [totalConversations, setTotalConversations] = useState(0);
@@ -1075,25 +1076,33 @@ export const ConversationsView: React.FC = () => {
 
   // Setup Realtime Echo for general inbox & user assignments
   useEffect(() => {
-    const echo = createEcho({
-      authEndpoint: '/api/v1/broadcasting/auth',
-    });
-    if (!echo) return;
-    echoRef.current = echo;
+    let cancelled = false;
+    let activeEcho: Echo<any> | null = null;
 
-    echo.connector?.pusher?.connection?.bind?.('connected', () => {
-      setRealtimeActive(true);
-    });
+    const setupRealtime = async () => {
+      const echo = await createEcho({
+        authEndpoint: '/api/v1/broadcasting/auth',
+      });
+      if (cancelled) {
+        echo.disconnect();
+        return;
+      }
+      activeEcho = echo;
+      echoRef.current = echo;
+      setEchoReadyVersion((version) => version + 1);
 
-    echo.connector?.pusher?.connection?.bind?.('disconnected', () => {
-      setRealtimeActive(false);
-    });
+      const connection = echo.connector?.pusher?.connection;
+      connection?.bind?.('connected', () => {
+        setRealtimeStatus('connected');
+      });
 
-    echo.connector?.pusher?.connection?.bind?.('failed', () => {
-      setRealtimeActive(false);
-    });
+      connection?.bind?.('connecting', () => setRealtimeStatus('connecting'));
+      const markDisconnected = () => setRealtimeStatus('offline');
+      connection?.bind?.('disconnected', markDisconnected);
+      connection?.bind?.('unavailable', markDisconnected);
+      connection?.bind?.('failed', markDisconnected);
 
-    const inboxChannel = echo.private('inbox');
+      const inboxChannel = echo.private('inbox');
 
     inboxChannel.listen('.ConversationCreated', (event: any) => {
       if (!isSupervisorOrAdminRef.current && event.status === 'bot') {
@@ -1542,14 +1551,96 @@ export const ConversationsView: React.FC = () => {
       });
     }
 
+    };
+
+    void setupRealtime().catch((error) => {
+      console.error('No se pudo inicializar la conexión en tiempo real.', error);
+      setRealtimeStatus('offline');
+    });
+
     return () => {
-      echo.leave?.('inbox');
-      if (user?.id) {
-        echo.leave?.(`user.${user.id}`);
+      cancelled = true;
+      if (activeEcho) {
+        activeEcho.leave?.('inbox');
+        if (user?.id) {
+          activeEcho.leave?.(`user.${user.id}`);
+        }
+        activeEcho.disconnect?.();
       }
-      echo.disconnect?.();
+      if (echoRef.current === activeEcho) {
+        echoRef.current = null;
+      }
     };
   }, [user?.id, hasPermission, matchesCurrentFilters, triggerNewChatNotification, triggerWaitingQueueNotification, showToast]);
+
+  // Keep the inbox usable when the WebSocket is unavailable. This also
+  // reconciles messages missed during short network interruptions.
+  useEffect(() => {
+    if (realtimeStatus === 'connected') return;
+
+    let syncing = false;
+    const syncInbox = async () => {
+      if (syncing || document.visibilityState === 'hidden') return;
+      syncing = true;
+      const selectedId = selectedConversationRef.current?.id;
+
+      try {
+        await fetchConversationsRef.current(true);
+
+        if (selectedId) {
+          const fresh = await api.getConversation(selectedId);
+          if (selectedConversationRef.current?.id !== selectedId) return;
+
+          const incomingMessages: Message[] = fresh.messages?.data || [];
+          const existingIds = new Set((selectedConversationRef.current.messages || []).map((message) => message.id));
+          const hasNewInbound = incomingMessages.some(
+            (message) => !existingIds.has(message.id) && (message.sender_type === 'contact' || message.direction === 'inbound')
+          );
+
+          setSelectedConversation((previous) => {
+            if (!previous || previous.id !== selectedId) return previous;
+            return {
+              ...previous,
+              ...fresh.data,
+              messages: sortAndDeduplicateInboxMessages([
+                ...(previous.messages || []),
+                ...incomingMessages,
+              ]),
+            };
+          });
+          if (fresh.messages) {
+            setHasMoreMessages(Boolean(fresh.messages.has_more));
+            setOldestMessageId(fresh.messages.oldest_message_id || null);
+          }
+          if (hasNewInbound) {
+            api.markConversationAsRead(selectedId).catch(() => {});
+            setConversations((previous) =>
+              previous.map((conversation) =>
+                conversation.id === selectedId ? { ...conversation, unread_count: 0 } : conversation
+              )
+            );
+          }
+        }
+      } catch {
+        // A later interval or focus event will retry automatically.
+      } finally {
+        syncing = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void syncInbox();
+    };
+    const interval = window.setInterval(() => void syncInbox(), 8000);
+    window.addEventListener('focus', syncInbox);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', syncInbox);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [realtimeStatus]);
 
   // Setup Realtime listener for active selected conversation thread
   useEffect(() => {
@@ -1689,7 +1780,7 @@ export const ConversationsView: React.FC = () => {
     return () => {
       echoRef.current?.leave(channelName);
     };
-  }, [selectedConversation?.id]);
+  }, [selectedConversation?.id, echoReadyVersion]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
@@ -2233,12 +2324,16 @@ export const ConversationsView: React.FC = () => {
                 fontSize: '0.75rem',
                 padding: '4px 10px',
                 borderRadius: '9999px',
-                background: realtimeActive ? '#eaf1ee' : '#f4f7f5',
-                color: realtimeActive ? '#263c38' : '#61726d',
-                border: `1px solid ${realtimeActive ? '#a9c8bb' : '#d9e3de'}`,
+                background: realtimeStatus === 'connected' ? '#eaf1ee' : '#f4f7f5',
+                color: realtimeStatus === 'connected' ? '#263c38' : '#61726d',
+                border: `1px solid ${realtimeStatus === 'connected' ? '#a9c8bb' : '#d9e3de'}`,
                 fontWeight: 500,
               }}
-              title={realtimeActive ? 'Conexión WebSocket activa con Reverb' : 'Conectando WebSocket...'}
+              title={realtimeStatus === 'connected'
+                ? 'Conexión en tiempo real activa'
+                : realtimeStatus === 'offline'
+                  ? 'Sin conexión en tiempo real; la bandeja se actualiza automáticamente'
+                  : 'Conectando en tiempo real'}
             >
               <span
                 style={{
@@ -2246,12 +2341,18 @@ export const ConversationsView: React.FC = () => {
                   width: '8px',
                   height: '8px',
                   borderRadius: '50%',
-                  background: realtimeActive ? '#5d8f82' : '#80918c',
-                  boxShadow: realtimeActive ? '0 0 6px #5d8f82' : 'none',
+                  background: realtimeStatus === 'connected' ? '#5d8f82' : '#80918c',
+                  boxShadow: realtimeStatus === 'connected' ? '0 0 6px #5d8f82' : 'none',
                 }}
               />
               <Wifi size={12} />
-              <span className="topbar-desktop-only">{realtimeActive ? 'Realtime Activo' : 'Conectando'}</span>
+              <span className="topbar-desktop-only">
+                {realtimeStatus === 'connected'
+                  ? 'Realtime Activo'
+                  : realtimeStatus === 'offline'
+                    ? 'Actualizando'
+                    : 'Conectando'}
+              </span>
             </div>
           </div>
         </div>

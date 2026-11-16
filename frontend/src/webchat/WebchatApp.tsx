@@ -287,6 +287,7 @@ export const WebchatApp: React.FC<WebchatAppProps> = ({ initialChannelKey }) => 
   const [connectionStatus, setConnectionStatus] = useState<
     'init' | 'loading' | 'connected' | 'reconnecting' | 'disconnected' | 'error' | 'unavailable'
   >(hasInitialChannel ? 'init' : 'error');
+  const [realtimeConnected, setRealtimeConnected] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(
     hasInitialChannel
       ? null
@@ -547,6 +548,8 @@ export const WebchatApp: React.FC<WebchatAppProps> = ({ initialChannelKey }) => 
     if (!session || !conversation?.id) return;
 
     const convId = conversation.id;
+    let cancelled = false;
+    let activeEcho: any = null;
 
     // Disconnect any existing Echo instance
     if (echoRef.current) {
@@ -555,35 +558,46 @@ export const WebchatApp: React.FC<WebchatAppProps> = ({ initialChannelKey }) => 
       } catch {
         // ignore
       }
+      echoRef.current = null;
     }
 
-    const echo = createEcho({
-      authEndpoint: '/api/v1/public/webchat/broadcast/auth',
-      bearerToken: session.visitor_token,
-    });
+    const setupRealtime = async () => {
+      const echo = await createEcho({
+        authEndpoint: '/api/v1/public/webchat/broadcast/auth',
+        bearerToken: session.visitor_token,
+      });
+      if (cancelled) {
+        echo.disconnect();
+        return;
+      }
+      activeEcho = echo;
+      echoRef.current = echo;
+      setRealtimeConnected(false);
+      setConnectionStatus('reconnecting');
 
-    echoRef.current = echo;
+      // Connection lifecycle monitoring
+      const connector = (echo.connector as any)?.pusher?.connection;
+      if (connector) {
+        connector.bind('connected', () => {
+          setRealtimeConnected(true);
+          setConnectionStatus('connected');
+          resyncMessages();
+        });
+        connector.bind('connecting', () => {
+          setRealtimeConnected(false);
+          setConnectionStatus('reconnecting');
+        });
+        const markDisconnected = () => {
+          setRealtimeConnected(false);
+          setConnectionStatus('disconnected');
+        };
+        connector.bind('unavailable', markDisconnected);
+        connector.bind('disconnected', markDisconnected);
+        connector.bind('failed', markDisconnected);
+      }
 
-    // Connection lifecycle monitoring
-    const connector = (echo.connector as any)?.pusher?.connection;
-    if (connector) {
-      connector.bind('connected', () => {
-        setConnectionStatus('connected');
-        resyncMessages();
-      });
-      connector.bind('connecting', () => {
-        setConnectionStatus('reconnecting');
-      });
-      connector.bind('unavailable', () => {
-        setConnectionStatus('disconnected');
-      });
-      connector.bind('failed', () => {
-        setConnectionStatus('error');
-      });
-    }
-
-    const channelName = `webchat.conversation.${convId}`;
-    const channel = echo.private(channelName);
+      const channelName = `webchat.conversation.${convId}`;
+      const channel = echo.private(channelName);
 
     channel.listen('.MessageCreated', (newMsg: WebchatMessage) => {
       setMessages((prev) => {
@@ -622,15 +636,56 @@ export const WebchatApp: React.FC<WebchatAppProps> = ({ initialChannelKey }) => 
       setConversation((prev) => (prev ? { ...prev, status: e.status } : null));
     });
 
+    };
+
+    void setupRealtime().catch(() => {
+      setRealtimeConnected(false);
+      setConnectionStatus('disconnected');
+    });
+
     return () => {
+      cancelled = true;
       try {
-        echo.leave(channelName);
-        echo.disconnect();
+        activeEcho?.leave(`webchat.conversation.${convId}`);
+        activeEcho?.disconnect();
       } catch {
         // ignore
       }
+      if (echoRef.current === activeEcho) {
+        echoRef.current = null;
+      }
     };
   }, [session, conversation?.id, resyncMessages]);
+
+  // If Reverb is unavailable, keep the visitor's transcript synchronized via
+  // the normal API and recover immediately when the tab becomes visible again.
+  useEffect(() => {
+    if (!session?.visitor_token || !conversation?.id || realtimeConnected) return;
+
+    let syncing = false;
+    const sync = async () => {
+      if (syncing || document.visibilityState === 'hidden') return;
+      syncing = true;
+      try {
+        await resyncMessages();
+      } finally {
+        syncing = false;
+      }
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void sync();
+    };
+    const interval = window.setInterval(() => void sync(), 5000);
+    window.addEventListener('focus', sync);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('focus', sync);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [session?.visitor_token, conversation?.id, realtimeConnected, resyncMessages]);
 
   // 5. Smart auto-scroll handling
   const handleScroll = useCallback(() => {
