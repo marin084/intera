@@ -319,8 +319,7 @@ class WebchatController extends Controller
 
                 $fresh = $conv->fresh(['channel', 'contact']);
 
-                DB::afterCommit(function () use ($fresh, $divider) {
-                    broadcast(new MessageCreated($divider));
+                DB::afterCommit(function () use ($fresh) {
                     broadcast(new ConversationUpdated($fresh));
                     broadcast(new ConversationStatusChanged($fresh));
                 });
