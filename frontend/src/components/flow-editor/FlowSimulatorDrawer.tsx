@@ -5,7 +5,6 @@ import {
   Square,
   X,
   Send,
-  AlertCircle,
   Activity,
   Layers,
   Variable,
@@ -19,6 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { api } from '../../services/api';
+import { useToast } from '../../context/ToastContext';
 import { resolveMediaUrl } from '../../utils/media';
 import { LinkifiedText } from '../common/LinkifiedText';
 import type { Flow, FlowVersion, SimulationState, SimulationEvent } from '../../types';
@@ -150,12 +150,12 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
   onActiveNodeChange,
   onActiveEdgeChange,
 }) => {
+  const { showToast } = useToast();
   const [activeTab, setActiveTab] = useState<'chat' | 'inspector' | 'events'>('chat');
   const [simulation, setSimulation] = useState<SimulationState | null>(null);
   const [prevContext, setPrevContext] = useState<Record<string, any>>({});
   const [loading, setLoading] = useState(Boolean(flow?.id && version?.id));
   const [inputText, setInputText] = useState('');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Inyección de variables iniciales
   const [showInjectModal, setShowInjectModal] = useState(false);
@@ -192,18 +192,17 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
   const startSimulation = useCallback(async (customInitialContext?: Record<string, any>) => {
     if (!flow || !version) return;
     setLoading(true);
-    setErrorMessage(null);
     setPrevContext({});
     try {
       const ctx = customInitialContext || injectedVariables;
       const res = await api.startSimulation(flow.id, version.id, ctx);
       setSimulation(res.data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al iniciar la simulación.');
+      showToast(err.message || 'Error al iniciar la simulación.', 'error');
     } finally {
       setLoading(false);
     }
-  }, [flow, version, injectedVariables]);
+  }, [flow, version, injectedVariables, showToast]);
 
   useEffect(() => {
     let ignore = false;
@@ -217,7 +216,7 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
         })
         .catch((err: any) => {
           if (!ignore) {
-            setErrorMessage(err.message || 'Error al iniciar la simulación.');
+            showToast(err.message || 'Error al iniciar la simulación.', 'error');
             setLoading(false);
           }
         });
@@ -225,7 +224,7 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
     return () => {
       ignore = true;
     };
-  }, [flow?.id, version?.id]);
+  }, [flow?.id, version?.id, showToast]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView?.({ behavior: 'smooth' });
@@ -236,7 +235,6 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
     if (!text || !simulation || !flow || !version || loading) return;
 
     setLoading(true);
-    setErrorMessage(null);
     setInputText('');
 
     // Guardar contexto previo para diff de variables
@@ -248,7 +246,7 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
       const res = await api.stepSimulation(flow.id, version.id, simulation.execution_id, text);
       setSimulation(res.data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al procesar el paso de simulación.');
+      showToast(err.message || 'Error al procesar el paso de simulación.', 'error');
     } finally {
       setLoading(false);
     }
@@ -257,7 +255,6 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
   const handleReset = async () => {
     if (!flow || !version) return;
     setLoading(true);
-    setErrorMessage(null);
     setPrevContext({});
     try {
       const res = await api.resetSimulation(
@@ -268,7 +265,7 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
       );
       setSimulation(res.data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al reiniciar la simulación.');
+      showToast(err.message || 'Error al reiniciar la simulación.', 'error');
     } finally {
       setLoading(false);
     }
@@ -277,12 +274,11 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
   const handleStop = async () => {
     if (!flow || !version || !simulation?.execution_id) return;
     setLoading(true);
-    setErrorMessage(null);
     try {
       const res = await api.stopSimulation(flow.id, version.id, simulation.execution_id);
       setSimulation(res.data);
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al detener la simulación.');
+      showToast(err.message || 'Error al detener la simulación.', 'error');
     } finally {
       setLoading(false);
     }
@@ -511,25 +507,6 @@ const FlowSimulatorDrawerContent: React.FC<FlowSimulatorDrawerProps> = ({
           Eventos ({simulation?.steps?.length || 0})
         </button>
       </div>
-
-      {/* Alerta de Error */}
-      {errorMessage && (
-        <div
-          style={{
-            padding: '0.65rem 0.85rem',
-            background: '#fee2e2',
-            color: '#991b1b',
-            fontSize: '0.76rem',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.45rem',
-            borderBottom: '1px solid #fecaca',
-          }}
-        >
-          <AlertCircle size={15} color="#dc2626" />
-          <span>{errorMessage}</span>
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* PESTAÑA 1: CHAT CONVERSACIONAL                                           */}

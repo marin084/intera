@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import type { Role, Permission } from '../types';
 import { Shield, Key, HelpCircle, Minus, Plus, Check, Loader2 } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
+import { useToast } from '../context/ToastContext';
 
 const MODULE_LABELS: Record<string, string> = {
   users: 'Usuarios',
@@ -42,6 +43,7 @@ function groupPermissions(items: PermissionEntry[]) {
 
 export const RolesView: React.FC = () => {
   const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const canManageRoles = hasPermission('roles.manage');
 
   const [roles, setRoles] = useState<Role[]>([]);
@@ -51,8 +53,6 @@ export const RolesView: React.FC = () => {
   // Auto-assignment capacity configuration state
   const [capacities, setCapacities] = useState<Record<number, number>>({});
   const [savingRoleId, setSavingRoleId] = useState<number | null>(null);
-  const [savedRoleId, setSavedRoleId] = useState<number | null>(null);
-  const [errorRoleId, setErrorRoleId] = useState<{ id: number; message: string } | null>(null);
 
   const getRoleMinCapacity = (roleName: string): number => {
     return roleName === 'super_admin' || roleName === 'flow_manager' ? 0 : 1;
@@ -86,14 +86,12 @@ export const RolesView: React.FC = () => {
   const handleCapacityChange = (roleId: number, val: number, minCap: number) => {
     const clamped = Math.max(minCap, Math.min(50, val));
     setCapacities((prev) => ({ ...prev, [roleId]: clamped }));
-    setErrorRoleId(null);
   };
 
   const handleSaveCapacity = async (roleId: number, minCap: number) => {
     const defaultVal = minCap === 0 ? 0 : 5;
     const capacity = capacities[roleId] ?? defaultVal;
     setSavingRoleId(roleId);
-    setErrorRoleId(null);
 
     try {
       const response = await api.updateRole(roleId, {
@@ -104,14 +102,12 @@ export const RolesView: React.FC = () => {
       setRoles((prev) =>
         prev.map((r) => (r.id === roleId ? { ...r, max_concurrent_conversations: response.data.max_concurrent_conversations } : r))
       );
-      setSavedRoleId(roleId);
-      setTimeout(() => {
-        setSavedRoleId((curr) => (curr === roleId ? null : curr));
-      }, 2500);
+      const roleName = roles.find((role) => role.id === roleId)?.display_name || 'el rol';
+      showToast(`Capacidad de autoasignación de «${roleName}» guardada.`, 'success');
     } catch (err: any) {
       console.error('Error saving role capacity:', err);
       const msg = err.response?.data?.message || err.message || 'Error al guardar capacidad';
-      setErrorRoleId({ id: roleId, message: msg });
+      showToast(msg, 'error');
     } finally {
       setSavingRoleId(null);
     }
@@ -139,8 +135,6 @@ export const RolesView: React.FC = () => {
               const defaultVal = minCap === 0 ? 0 : 5;
               const currentCap = capacities[role.id] ?? role.max_concurrent_conversations ?? defaultVal;
               const isSaving = savingRoleId === role.id;
-              const isSaved = savedRoleId === role.id;
-              const hasError = errorRoleId?.id === role.id;
 
               return (
                 <div
@@ -348,20 +342,11 @@ export const RolesView: React.FC = () => {
                               <>
                                 <Loader2 size={12} className="animate-spin" /> Guardando...
                               </>
-                            ) : isSaved ? (
-                              <>
-                                <Check size={12} /> Guardado
-                              </>
                             ) : (
                               'Guardar'
                             )}
                           </button>
                         </div>
-                        {hasError && (
-                          <div style={{ color: 'var(--danger)', fontSize: '0.75rem', marginTop: '0.35rem' }}>
-                            {errorRoleId.message}
-                          </div>
-                        )}
                       </div>
                     ) : (
                       <div style={{ minHeight: '32px', display: 'flex', alignItems: 'center' }}>

@@ -37,8 +37,9 @@ import { calculateAutoLayout, hasValidPositions } from './layoutEngine';
 import { computeVisibleGraph } from './branchVisibility';
 import { ConfirmModal } from '../common/ConfirmModal';
 import { AuthContext } from '../../context/authContextDef';
+import { useToast } from '../../context/ToastContext';
 import './flow-editor.css';
-import { PanelRightOpen, Lock, ShieldAlert, AlertTriangle, CheckCircle, Info } from 'lucide-react';
+import { PanelRightOpen, Lock, ShieldAlert } from 'lucide-react';
 
 interface FlowEditorProps {
   flowId: string;
@@ -57,6 +58,7 @@ const InnerFlowEditor: React.FC<FlowEditorProps> = ({
   onBack,
 }) => {
   const auth = useContext(AuthContext);
+  const { showToast } = useToast();
   const hasEditPermission = auth ? (auth.hasPermission ? auth.hasPermission('flows.edit') : true) : true;
 
   const [loading, setLoading] = useState(true);
@@ -139,18 +141,6 @@ const InnerFlowEditor: React.FC<FlowEditorProps> = ({
     requiredText?: string;
     onConfirm: () => void;
   } | null>(null);
-
-  const [toastMessage, setToastMessage] = useState<{
-    message: string;
-    type: 'success' | 'error' | 'info';
-  } | null>(null);
-
-  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
-    setToastMessage({ message, type });
-    setTimeout(() => {
-      setToastMessage(null);
-    }, 4000);
-  }, []);
 
   const handleToggleProperties = useCallback(() => {
     setIsPropertiesCollapsed((prev) => {
@@ -2078,34 +2068,6 @@ const InnerFlowEditor: React.FC<FlowEditorProps> = ({
         />
       )}
 
-      {/* Styled Floating Toast */}
-      {toastMessage && (
-        <div
-          data-testid="flow-editor-toast-notification"
-          style={{
-            position: 'fixed',
-            top: '1.5rem',
-            right: '1.5rem',
-            zIndex: 99999,
-            backgroundColor: toastMessage.type === 'error' ? '#fef2f2' : toastMessage.type === 'success' ? '#eaf1ee' : '#eaf1ee',
-            color: toastMessage.type === 'error' ? '#991b1b' : toastMessage.type === 'success' ? '#263c38' : '#456c61',
-            border: `1px solid ${toastMessage.type === 'error' ? '#fca5a5' : toastMessage.type === 'success' ? '#a9c8bb' : '#93c5fd'}`,
-            borderRadius: '10px',
-            padding: '0.85rem 1.25rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            maxWidth: '420px',
-            animation: 'fadeIn 0.2s ease-out',
-          }}
-        >
-          {toastMessage.type === 'error' && <AlertTriangle size={18} />}
-          {toastMessage.type === 'success' && <CheckCircle size={18} />}
-          {toastMessage.type === 'info' && <Info size={18} />}
-          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{toastMessage.message}</span>
-        </div>
-      )}
     </div>
   );
 };

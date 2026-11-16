@@ -1,24 +1,24 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { InteraLogo } from '../components/InteraLogo';
-import { Lock, Mail, ShieldAlert, RefreshCw } from 'lucide-react';
+import { Lock, Mail, RefreshCw } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 export const LoginView: React.FC = () => {
   const { login } = useAuth();
+  const { showToast } = useToast();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     setLoading(true);
 
     try {
       await login({ email, password });
     } catch (err: any) {
-      setError(err.message || 'Error al iniciar sesión.');
+      showToast(err.message || 'Error al iniciar sesión.', 'error');
     } finally {
       setLoading(false);
     }
@@ -49,13 +49,6 @@ export const LoginView: React.FC = () => {
             Conversaciones que hacen equipo.
           </p>
         </div>
-
-        {error && (
-          <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <ShieldAlert size={18} />
-            <span>{error}</span>
-          </div>
-        )}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">

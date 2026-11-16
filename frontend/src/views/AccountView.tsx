@@ -1,31 +1,29 @@
 import React, { useState } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/useAuth';
-import { Lock, CheckCircle2, AlertCircle, Shield, User } from 'lucide-react';
+import { Lock, Shield, User } from 'lucide-react';
+import { useToast } from '../context/ToastContext';
 
 export const AccountView: React.FC = () => {
   const { user, roles } = useAuth();
+  const { showToast } = useToast();
   const [currentPassword, setCurrentPassword] = useState('');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [loading, setLoading] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
 
   const handlePasswordSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSuccessMessage(null);
-    setErrorMessage(null);
     setFieldErrors({});
 
     if (password.length < 12) {
-      setErrorMessage('La nueva contraseña debe tener al menos 12 caracteres.');
+      showToast('La nueva contraseña debe tener al menos 12 caracteres.', 'error');
       return;
     }
 
     if (password !== passwordConfirmation) {
-      setErrorMessage('La confirmación de la nueva contraseña no coincide.');
+      showToast('La confirmación de la nueva contraseña no coincide.', 'error');
       return;
     }
 
@@ -37,7 +35,7 @@ export const AccountView: React.FC = () => {
         password_confirmation: passwordConfirmation,
       });
 
-      setSuccessMessage(res.message || 'Contraseña actualizada exitosamente.');
+      showToast(res.message || 'Contraseña actualizada exitosamente.', 'success');
       setCurrentPassword('');
       setPassword('');
       setPasswordConfirmation('');
@@ -45,7 +43,7 @@ export const AccountView: React.FC = () => {
       if (err.data?.errors) {
         setFieldErrors(err.data.errors);
       }
-      setErrorMessage(err.data?.message || err.message || 'Error al actualizar la contraseña.');
+      showToast(err.data?.message || err.message || 'Error al actualizar la contraseña.', 'error');
     } finally {
       setLoading(false);
     }
@@ -99,28 +97,6 @@ export const AccountView: React.FC = () => {
             </div>
           </div>
         </div>
-
-        {successMessage && (
-          <div
-            className="alert alert-success"
-            data-testid="password-success-message"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}
-          >
-            <CheckCircle2 size={18} />
-            <span>{successMessage}</span>
-          </div>
-        )}
-
-        {errorMessage && (
-          <div
-            className="alert alert-danger"
-            data-testid="password-error-message"
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.25rem' }}
-          >
-            <AlertCircle size={18} />
-            <span>{errorMessage}</span>
-          </div>
-        )}
 
         <form onSubmit={handlePasswordSubmit} className="account-password-form">
           <div className="form-group">

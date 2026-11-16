@@ -11,6 +11,7 @@ import type {
 } from '../../types';
 import { FunnelContactsModal } from './FunnelContactsModal';
 import { ConfirmModal } from '../../components/common/ConfirmModal';
+import { useToast } from '../../context/ToastContext';
 import {
   GitBranch,
   Radio,
@@ -29,7 +30,6 @@ import {
   RotateCcw,
   Sparkles,
   Save,
-  CheckCircle,
 } from 'lucide-react';
 
 interface FunnelsTabProps {
@@ -68,6 +68,7 @@ function computeRangeDates(range: QuickRange): { from: string; to: string } {
 }
 
 export const FunnelsTab: React.FC<FunnelsTabProps> = ({ initialFlowId, onOpenConversation }) => {
+  const { showToast } = useToast();
   const [flows, setFlows] = useState<Flow[]>([]);
   const [channels, setChannels] = useState<Channel[]>([]);
   const [selectedFlowId, setSelectedFlowId] = useState<string>(initialFlowId || '');
@@ -96,7 +97,6 @@ export const FunnelsTab: React.FC<FunnelsTabProps> = ({ initialFlowId, onOpenCon
   const [isSavingFunnel, setIsSavingFunnel] = useState<boolean>(false);
   const [isDeletingFunnel, setIsDeletingFunnel] = useState<boolean>(false);
   const [deleteModalOpen, setDeleteModalOpen] = useState<boolean>(false);
-  const [funnelFeedbackMsg, setFunnelFeedbackMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Modal drill-down state (either sequential step or menu option)
   const [modalState, setModalState] = useState<{
@@ -268,10 +268,9 @@ export const FunnelsTab: React.FC<FunnelsTabProps> = ({ initialFlowId, onOpenCon
       setConfiguredSteps(newFunnel.steps);
       setIsNewFunnelModalOpen(false);
       setNewFunnelName('');
-      setFunnelFeedbackMsg({ type: 'success', text: `Embudo "${newFunnel.name}" creado y guardado.` });
-      setTimeout(() => setFunnelFeedbackMsg(null), 4000);
+      showToast(`Embudo «${newFunnel.name}» creado y guardado.`, 'success');
     } catch (err: any) {
-      setFunnelFeedbackMsg({ type: 'error', text: err.message || 'Error al guardar el nuevo embudo.' });
+      showToast(err.message || 'Error al guardar el nuevo embudo.', 'error');
     } finally {
       setIsSavingFunnel(false);
     }
@@ -288,10 +287,9 @@ export const FunnelsTab: React.FC<FunnelsTabProps> = ({ initialFlowId, onOpenCon
 
       const updated = res.data;
       setSavedFunnels((prev) => prev.map((f) => (f.id === updated.id ? updated : f)));
-      setFunnelFeedbackMsg({ type: 'success', text: `Cambios guardados en "${updated.name}".` });
-      setTimeout(() => setFunnelFeedbackMsg(null), 4000);
+      showToast(`Cambios guardados en «${updated.name}».`, 'success');
     } catch (err: any) {
-      setFunnelFeedbackMsg({ type: 'error', text: err.message || 'Error al actualizar el embudo.' });
+      showToast(err.message || 'Error al actualizar el embudo.', 'error');
     } finally {
       setIsSavingFunnel(false);
     }
@@ -310,10 +308,9 @@ export const FunnelsTab: React.FC<FunnelsTabProps> = ({ initialFlowId, onOpenCon
       if (analytics?.default_steps && analytics.default_steps.length > 0) {
         setConfiguredSteps(analytics.default_steps);
       }
-      setFunnelFeedbackMsg({ type: 'success', text: 'Embudo eliminado exitosamente.' });
-      setTimeout(() => setFunnelFeedbackMsg(null), 4000);
+      showToast('Embudo eliminado exitosamente.', 'success');
     } catch (err: any) {
-      setFunnelFeedbackMsg({ type: 'error', text: err.message || 'Error al eliminar el embudo.' });
+      showToast(err.message || 'Error al eliminar el embudo.', 'error');
     } finally {
       setIsDeletingFunnel(false);
     }
@@ -703,25 +700,6 @@ export const FunnelsTab: React.FC<FunnelsTabProps> = ({ initialFlowId, onOpenCon
           </div>
         </div>
 
-        {/* Feedback message banner */}
-        {funnelFeedbackMsg && (
-          <div
-            className={`alert ${funnelFeedbackMsg.type === 'success' ? 'alert-success' : 'alert-danger'}`}
-            style={{
-              padding: '0.5rem 0.75rem',
-              fontSize: '0.8rem',
-              borderRadius: '8px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.4rem',
-              marginTop: '0.5rem',
-            }}
-            data-testid="funnel-feedback-alert"
-          >
-            {funnelFeedbackMsg.type === 'success' ? <CheckCircle size={15} /> : <AlertCircle size={15} />}
-            <span>{funnelFeedbackMsg.text}</span>
-          </div>
-        )}
       </div>
 
       {/* Error Message */}

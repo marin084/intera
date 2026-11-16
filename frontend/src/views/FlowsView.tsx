@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import type { Flow } from '../types';
 import { GitBranch, Plus, CheckCircle, Clock, Eye, Layers, Trash2, AlertTriangle, XCircle, BarChart3, Settings, Globe, Radio } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
+import { useToast } from '../context/ToastContext';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { DiscardChangesPanel } from '../components/common/DiscardChangesPanel';
 
@@ -42,6 +43,7 @@ const ChannelApplicabilityBadges: React.FC<{ channels?: string[] }> = ({ channel
 
 export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalytics }) => {
   const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const [flows, setFlows] = useState<Flow[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -51,15 +53,7 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
   const [confirmDiscardEditFlow, setConfirmDiscardEditFlow] = useState(false);
   const [selectedFlow, setSelectedFlow] = useState<any | null>(null);
   const [flowStatusFilter, setFlowStatusFilter] = useState<'all' | 'published' | 'draft'>('all');
-  const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [rollbackTarget, setRollbackTarget] = useState<{ flowId: string; versionId: string } | null>(null);
-
-  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
-    setToastMessage({ message, type });
-    setTimeout(() => {
-      setToastMessage((prev) => (prev?.message === message ? null : prev));
-    }, 4500);
-  };
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -72,7 +66,6 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
   const [editFlowDescription, setEditFlowDescription] = useState('');
   const [editFlowApplicability, setEditFlowApplicability] = useState<string[]>([]);
   const [editFlowSubmitting, setEditFlowSubmitting] = useState(false);
-  const [editFlowError, setEditFlowError] = useState<string | null>(null);
 
   // Safe Deletion states
   const [deletingFlow, setDeletingFlow] = useState<Flow | null>(null);
@@ -84,7 +77,6 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
   const [flowVersionsCount, setFlowVersionsCount] = useState<number | null>(null);
   const [loadingDeleteDetails, setLoadingDeleteDetails] = useState(false);
   const [deletePanelViewport, setDeletePanelViewport] = useState<{ top: number; left: number; width: number; height: number } | null>(null);
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!deletingFlow) {
@@ -153,7 +145,6 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
     setConfirmDiscardEditFlow(false);
     setEditFlowDirty(false);
     setEditingFlow(null);
-    setEditFlowError(null);
   };
 
   const requestCloseEditFlow = () => {
@@ -259,14 +250,12 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
     setEditFlowName(flow.name);
     setEditFlowDescription(flow.description || '');
     setEditFlowApplicability(flow.channel_applicability?.length ? [...flow.channel_applicability] : ['webchat']);
-    setEditFlowError(null);
   };
 
   const handleUpdateFlow = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingFlow) return;
     setEditFlowSubmitting(true);
-    setEditFlowError(null);
 
     try {
       await api.updateFlow(editingFlow.id, {
@@ -280,7 +269,7 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
       setConfirmDiscardEditFlow(false);
       await fetchFlows();
     } catch (err: any) {
-      setEditFlowError(err.message || 'Error al actualizar el flujo.');
+      showToast(err.message || 'Error al actualizar el flujo.', 'error');
     } finally {
       setEditFlowSubmitting(false);
     }
@@ -356,10 +345,7 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
       setDeleteConfirmName('');
       setDeleteConversationsCount(null);
       setBlockingChannels([]);
-      setActionSuccessMessage(res.message || 'Flujo eliminado exitosamente.');
-      setTimeout(() => {
-        setActionSuccessMessage(null);
-      }, 4000);
+      showToast(res.message || 'Flujo eliminado exitosamente.', 'success');
       await fetchFlows();
     } catch (err: any) {
       if (err.data?.blocking_channels && err.data.blocking_channels.length > 0) {
@@ -417,12 +403,6 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
 
   return (
     <div>
-      {actionSuccessMessage && (
-        <div className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: '#eaf1ee', borderColor: '#a9c8bb', color: '#263c38' }}>
-          <CheckCircle size={18} color="#5d8f82" />
-          <span>{actionSuccessMessage}</span>
-        </div>
-      )}
       <div className="card">
         <div className="card-header">
           <div>
@@ -719,11 +699,6 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
 
             <form onSubmit={handleUpdateFlow} onChangeCapture={() => setEditFlowDirty(true)} className="flow-side-panel-form">
               <div className="flow-side-panel-body">
-                {editFlowError && (
-                  <div className="alert alert-danger" style={{ marginBottom: '1rem', padding: '0.75rem', fontSize: '0.85rem' }}>
-                    {editFlowError}
-                  </div>
-                )}
               <div className="form-group">
                 <label className="form-label">Nombre del Flujo</label>
                 <input
@@ -1093,32 +1068,6 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
         testId="confirm-rollback-modal"
       />
 
-      {/* Styled Floating Toast */}
-      {toastMessage && (
-        <div
-          data-testid="flows-toast-notification"
-          style={{
-            position: 'fixed',
-            top: '1.5rem',
-            right: '1.5rem',
-            zIndex: 9999,
-            backgroundColor: toastMessage.type === 'error' ? '#fef2f2' : '#eaf1ee',
-            color: toastMessage.type === 'error' ? '#991b1b' : '#263c38',
-            border: `1px solid ${toastMessage.type === 'error' ? '#fca5a5' : '#a9c8bb'}`,
-            borderRadius: '10px',
-            padding: '0.85rem 1.25rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            maxWidth: '400px',
-            animation: 'fadeIn 0.2s ease-out',
-          }}
-        >
-          {toastMessage.type === 'error' ? <AlertTriangle size={18} /> : <CheckCircle size={18} />}
-          <span style={{ fontSize: '0.875rem', fontWeight: 500 }}>{toastMessage.message}</span>
-        </div>
-      )}
       <DiscardChangesPanel
         isOpen={confirmDiscardCreateFlow}
         onContinueEditing={() => setConfirmDiscardCreateFlow(false)}

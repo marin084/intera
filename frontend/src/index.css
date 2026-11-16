@@ -2106,6 +2106,121 @@ tr:hover td {
   border: 1px solid var(--sage);
 }
 
+/* Shared, transient feedback for successful and failed actions. */
+.app-toast-viewport {
+  position: fixed;
+  z-index: 5000;
+  top: max(1rem, env(safe-area-inset-top));
+  right: max(1rem, env(safe-area-inset-right));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.65rem;
+  width: min(28rem, calc(100vw - 2rem));
+  pointer-events: none;
+}
+
+.app-toast {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  min-height: 3.25rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  color: var(--text-main);
+  box-shadow: 0 10px 30px rgb(38 60 56 / 0.16);
+  pointer-events: auto;
+  animation: app-toast-in 180ms ease-out;
+}
+
+.app-toast--success {
+  border-color: var(--sage);
+  background: #f8fbf9;
+}
+
+.app-toast--success .app-toast__icon {
+  color: var(--primary);
+}
+
+.app-toast--error {
+  border-color: #f3b9b9;
+  background: #fffafa;
+}
+
+.app-toast--error .app-toast__icon {
+  color: var(--danger);
+}
+
+.app-toast--info .app-toast__icon {
+  color: var(--primary);
+}
+
+.app-toast__message {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.app-toast__action,
+.app-toast__close {
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.app-toast__action {
+  padding: 0.35rem 0.5rem;
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.app-toast__action:hover,
+.app-toast__close:hover {
+  background: var(--primary-light);
+}
+
+.app-toast__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 7px;
+}
+
+.app-toast__action:focus-visible,
+.app-toast__close:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+@keyframes app-toast-in {
+  from { opacity: 0; transform: translateY(-0.35rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 600px) {
+  .app-toast-viewport {
+    top: auto;
+    right: max(0.65rem, env(safe-area-inset-right));
+    bottom: max(0.65rem, env(safe-area-inset-bottom));
+    width: calc(100vw - 1.3rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast { animation: none; }
+}
+
 .flow-channel-badges {
   display: flex;
   flex-wrap: wrap;

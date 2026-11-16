@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CheckCircle2, AlertTriangle, X, Loader2, Send } from 'lucide-react';
+import { CheckCircle2, X, Loader2, Send } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
 
 export interface FlowPublishModalProps {
   isOpen: boolean;
@@ -20,21 +21,19 @@ export const FlowPublishModal: React.FC<FlowPublishModalProps> = ({
   onClose,
   onSuccessDismiss,
 }) => {
+  const { showToast } = useToast();
   const [step, setStep] = useState<'form' | 'success'>('form');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
   const handleClose = () => {
     setStep('form');
-    setErrorMessage(null);
     onClose();
   };
 
   const handleSuccessClose = () => {
     setStep('form');
-    setErrorMessage(null);
     onSuccessDismiss();
   };
 
@@ -43,14 +42,13 @@ export const FlowPublishModal: React.FC<FlowPublishModalProps> = ({
     if (isSubmitting) return;
 
     setIsSubmitting(true);
-    setErrorMessage(null);
     try {
       const ok = await onPublish(notes);
       if (ok) {
         setStep('success');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error al publicar la versión.');
+      showToast(err.message || 'Error al publicar la versión.', 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -80,26 +78,6 @@ export const FlowPublishModal: React.FC<FlowPublishModalProps> = ({
                 <X size={16} />
               </button>
             </div>
-
-            {errorMessage && (
-              <div
-                style={{
-                  background: '#fef2f2',
-                  border: '1px solid #fecdd3',
-                  color: '#b91c1c',
-                  padding: '0.65rem 0.85rem',
-                  borderRadius: '6px',
-                  fontSize: '0.825rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  marginBottom: '1rem',
-                }}
-              >
-                <AlertTriangle size={16} style={{ flexShrink: 0 }} />
-                <span>{errorMessage}</span>
-              </div>
-            )}
 
             <form onSubmit={handleSubmit}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem', margin: '0.5rem 0 1.25rem', fontSize: '0.875rem' }}>

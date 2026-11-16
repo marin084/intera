@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, FileText, Send, CheckCircle2, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { api } from '../../services/api';
+import { useToast } from '../../context/ToastContext';
 
 interface TemplateItem {
   key: string;
@@ -37,6 +38,7 @@ const WhatsAppTemplateModalContent: React.FC<WhatsAppTemplateModalProps> = ({
   onSendTemplate,
   onTemplateSent,
 }) => {
+  const { showToast } = useToast();
   const [templateLoadState, setTemplateLoadState] = useState(() => ({
     channelId: channelId ?? null,
     templates: [] as TemplateItem[],
@@ -147,7 +149,7 @@ const WhatsAppTemplateModalContent: React.FC<WhatsAppTemplateModalProps> = ({
       }, 1500);
     } catch (err: any) {
       const msg = err.response?.data?.message || err.message || 'Error al enviar plantilla a través de WhatsApp.';
-      setErrorMessage(msg);
+      showToast(msg, 'error');
     } finally {
       setSending(false);
     }

@@ -27,10 +27,12 @@ import {
 } from 'lucide-react';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { DiscardChangesPanel } from '../components/common/DiscardChangesPanel';
+import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/useAuth';
 
 export const ChannelsView: React.FC = () => {
   const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const [channels, setChannels] = useState<Channel[]>([]);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -70,7 +72,6 @@ export const ChannelsView: React.FC = () => {
   const [botUsername, setBotUsername] = useState('');
   const [webhookSecretToken, setWebhookSecretToken] = useState('');
   const [telegramSettingWebhook, setTelegramSettingWebhook] = useState(false);
-  const [telegramWebhookFeedback, setTelegramWebhookFeedback] = useState<{ ok: boolean; msg: string } | null>(null);
 
   // Inactivity auto-close states
   const [inactivityEnabled, setInactivityEnabled] = useState(true);
@@ -105,9 +106,7 @@ export const ChannelsView: React.FC = () => {
     type: 'toggle_active',
     isSubmitting: false,
   });
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
   const [undoChannelStatus, setUndoChannelStatus] = useState<{ channel: Channel; restoreActive: boolean } | null>(null);
-  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [formErrorMessage, setFormErrorMessage] = useState<string | null>(null);
 
   const discardChannelForm = () => {
@@ -124,30 +123,21 @@ export const ChannelsView: React.FC = () => {
     else discardChannelForm();
   };
 
-  const handleUndoChannelStatus = async () => {
-    if (!undoChannelStatus) return;
+  const handleUndoChannelStatus = async (target = undoChannelStatus) => {
+    if (!target) return;
     try {
-      await api.updateChannelStatus(undoChannelStatus.channel.id, undoChannelStatus.restoreActive);
-      setActionSuccessMessage(`Se deshizo el cambio de estado de «${undoChannelStatus.channel.name}».`);
+      await api.updateChannelStatus(target.channel.id, target.restoreActive);
+      showToast(`Se deshizo el cambio de estado de «${target.channel.name}».`, 'success');
       setUndoChannelStatus(null);
       await fetchChannelsAndFlows();
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'No se pudo deshacer el cambio de estado del canal.');
+      showToast(err.message || 'No se pudo deshacer el cambio de estado del canal.', 'error');
     }
   };
 
   useEffect(() => {
-    if (actionErrorMessage) {
-      const timer = setTimeout(() => {
-        setActionErrorMessage(null);
-      }, 5000);
-      return () => clearTimeout(timer);
-    }
-  }, [actionErrorMessage]);
-
-  useEffect(() => {
     if (!undoChannelStatus) return;
-    const timeout = window.setTimeout(() => setUndoChannelStatus(null), 6000);
+    const timeout = window.setTimeout(() => setUndoChannelStatus(null), 8000);
     return () => window.clearTimeout(timeout);
   }, [undoChannelStatus]);
 
@@ -265,12 +255,11 @@ export const ChannelsView: React.FC = () => {
 
   const handleSetupTelegramWebhook = async (channelId: string) => {
     setTelegramSettingWebhook(true);
-    setTelegramWebhookFeedback(null);
     try {
       const res = await api.setupTelegramWebhook(channelId);
-      setTelegramWebhookFeedback({ ok: true, msg: res.message || 'Webhook configurado exitosamente en Telegram.' });
+      showToast(res.message || 'Webhook configurado exitosamente en Telegram.', 'success');
     } catch (err: any) {
-      setTelegramWebhookFeedback({ ok: false, msg: err.message || 'Error al configurar el webhook en Telegram.' });
+      showToast(err.message || 'Error al configurar el webhook en Telegram.', 'error');
     } finally {
       setTelegramSettingWebhook(false);
     }
@@ -300,7 +289,6 @@ export const ChannelsView: React.FC = () => {
     setBotToken('');
     setBotUsername('');
     generateRandomTelegramSecret();
-    setTelegramWebhookFeedback(null);
 
     setInactivityEnabled(true);
     setInactivityWarningEnabled(true);
@@ -375,7 +363,6 @@ export const ChannelsView: React.FC = () => {
       setBotUsername(config.bot_username || '');
       setBotToken('');
       setWebhookSecretToken('');
-      setTelegramWebhookFeedback(null);
     } else {
       setWelcomeMessage(config?.welcome_message || '¡Hola! ¿En qué podemos ayudarte?');
       const ws = channel.webchat_settings;
@@ -442,7 +429,7 @@ export const ChannelsView: React.FC = () => {
         setShowCreateModal(false);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al crear canal Webchat.');
+        showToast(err.message || 'Error al crear canal Webchat.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -492,7 +479,7 @@ export const ChannelsView: React.FC = () => {
         setShowCreateModal(false);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al crear canal Facebook Messenger.');
+        showToast(err.message || 'Error al crear canal Facebook Messenger.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -548,7 +535,7 @@ export const ChannelsView: React.FC = () => {
         setShowCreateModal(false);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al crear canal Instagram.');
+        showToast(err.message || 'Error al crear canal Instagram.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -580,7 +567,7 @@ export const ChannelsView: React.FC = () => {
         setShowCreateModal(false);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al crear canal Telegram.');
+        showToast(err.message || 'Error al crear canal Telegram.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -637,7 +624,7 @@ export const ChannelsView: React.FC = () => {
         setShowCreateModal(false);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al crear canal WhatsApp.');
+        showToast(err.message || 'Error al crear canal WhatsApp.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -688,7 +675,7 @@ export const ChannelsView: React.FC = () => {
         setEditingChannel(null);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al actualizar canal WhatsApp.');
+        showToast(err.message || 'Error al actualizar canal WhatsApp.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -724,7 +711,7 @@ export const ChannelsView: React.FC = () => {
         setEditingChannel(null);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al actualizar canal Facebook Messenger.');
+        showToast(err.message || 'Error al actualizar canal Facebook Messenger.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -767,7 +754,7 @@ export const ChannelsView: React.FC = () => {
         setEditingChannel(null);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al actualizar canal Instagram.');
+        showToast(err.message || 'Error al actualizar canal Instagram.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -798,7 +785,7 @@ export const ChannelsView: React.FC = () => {
         setEditingChannel(null);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al actualizar canal Telegram.');
+        showToast(err.message || 'Error al actualizar canal Telegram.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -834,7 +821,7 @@ export const ChannelsView: React.FC = () => {
         setEditingChannel(null);
         fetchChannelsAndFlows();
       } catch (err: any) {
-        setFormErrorMessage(err.message || 'Error al actualizar canal.');
+        showToast(err.message || 'Error al actualizar canal.', 'error');
       } finally {
         setSubmitting(false);
       }
@@ -858,9 +845,13 @@ export const ChannelsView: React.FC = () => {
     try {
       setConfirmModalState((prev) => ({ ...prev, isSubmitting: true }));
       await api.updateChannelStatus(channel.id, !channel.is_active);
-      setActionSuccessMessage(`El canal «${channel.name}» fue ${channel.is_active ? 'desactivado' : 'activado'} correctamente.`);
-      setUndoChannelStatus({ channel, restoreActive: channel.is_active });
-      window.setTimeout(() => setActionSuccessMessage(null), 6000);
+      const undoAction = { channel, restoreActive: channel.is_active };
+      setUndoChannelStatus(undoAction);
+      showToast(
+        `El canal «${channel.name}» fue ${channel.is_active ? 'desactivado' : 'activado'} correctamente.`,
+        'success',
+        { label: 'Deshacer', onClick: () => handleUndoChannelStatus(undoAction) },
+      );
       setConfirmModalState({
         isOpen: false,
         channel: null,
@@ -869,7 +860,7 @@ export const ChannelsView: React.FC = () => {
       });
       fetchChannelsAndFlows();
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'Error al cambiar estado del canal.');
+      showToast(err.message || 'Error al cambiar estado del canal.', 'error');
       setConfirmModalState((prev) => ({ ...prev, isOpen: false, channel: null, isSubmitting: false }));
     }
   };
@@ -879,10 +870,11 @@ export const ChannelsView: React.FC = () => {
     setRegenerating(true);
     try {
       await api.regenerateWebchatKey(confirmRegenChannel.id);
+      showToast('Se regeneró la clave pública del canal.', 'success');
       setConfirmRegenChannel(null);
       fetchChannelsAndFlows();
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'Error al regenerar clave pública.');
+      showToast(err.message || 'Error al regenerar clave pública.', 'error');
     } finally {
       setRegenerating(false);
     }
@@ -916,13 +908,10 @@ export const ChannelsView: React.FC = () => {
         type: 'delete',
         isSubmitting: false,
       });
-      setActionSuccessMessage(res?.message || 'Canal eliminado exitosamente.');
-      setTimeout(() => {
-        setActionSuccessMessage(null);
-      }, 4000);
+      showToast(res?.message || 'Canal eliminado exitosamente.', 'success');
       await fetchChannelsAndFlows();
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'Error al eliminar el canal.');
+      showToast(err.message || 'Error al eliminar el canal.', 'error');
       setConfirmModalState((prev) => ({ ...prev, isOpen: false, channel: null, isSubmitting: false }));
     }
   };
@@ -1054,23 +1043,6 @@ export const ChannelsView: React.FC = () => {
 
   return (
     <div>
-      {actionSuccessMessage && (
-        <div data-testid="channel-action-success-alert" className="alert alert-success" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: '#eaf1ee', borderColor: '#a9c8bb', color: '#263c38' }}>
-          <CheckCircle size={18} color="#5d8f82" />
-          <span>{actionSuccessMessage}</span>
-          {undoChannelStatus && (
-            <button type="button" className="btn btn-sm btn-secondary" onClick={handleUndoChannelStatus}>Deshacer</button>
-          )}
-        </div>
-      )}
-
-      {actionErrorMessage && (
-        <div data-testid="channel-action-error-alert" className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b' }}>
-          <AlertTriangle size={18} color="#dc2626" />
-          <span>{actionErrorMessage}</span>
-        </div>
-      )}
-
       <div className="alert alert-info" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
         <Info size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
         <div>
@@ -1166,7 +1138,6 @@ export const ChannelsView: React.FC = () => {
                         <button
                           className="btn btn-sm btn-secondary"
                           onClick={() => {
-                            setTelegramWebhookFeedback(null);
                             setMetaWebhookChannel(c);
                           }}
                           style={{ fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
@@ -2755,21 +2726,6 @@ export const ChannelsView: React.FC = () => {
                       {telegramSettingWebhook ? 'Registrando...' : 'Registrar en Telegram'}
                     </button>
                   </div>
-                  {telegramWebhookFeedback && (
-                    <div
-                      style={{
-                        marginTop: '0.5rem',
-                        fontSize: '0.775rem',
-                        padding: '0.4rem 0.6rem',
-                        borderRadius: '4px',
-                        background: telegramWebhookFeedback.ok ? '#eaf1ee' : '#fee2e2',
-                        color: telegramWebhookFeedback.ok ? '#263c38' : '#991b1b',
-                        border: `1px solid ${telegramWebhookFeedback.ok ? '#a9c8bb' : '#fca5a5'}`,
-                      }}
-                    >
-                      {telegramWebhookFeedback.msg}
-                    </div>
-                  )}
                 </div>
               )}
 

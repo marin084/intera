@@ -9,7 +9,6 @@ import {
   UserX,
   UserCheck,
   Trash2,
-  AlertTriangle,
   Radio,
   Globe,
   Pencil,
@@ -17,6 +16,7 @@ import {
 import { useAuth } from '../context/useAuth';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { DiscardChangesPanel } from '../components/common/DiscardChangesPanel';
+import { useToast } from '../context/ToastContext';
 
 const channelIconSources: Record<string, string> = {
   whatsapp: '/channels/whatsapp.svg',
@@ -36,6 +36,7 @@ const UserChannelIcon: React.FC<{ type: string }> = ({ type }) => {
 
 export const UsersView: React.FC = () => {
   const { hasPermission } = useAuth();
+  const { showToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -66,9 +67,6 @@ export const UsersView: React.FC = () => {
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
   const [isSubmittingConfirm, setIsSubmittingConfirm] = useState(false);
 
-  // Feedback notifications
-  const [actionSuccessMessage, setActionSuccessMessage] = useState<string | null>(null);
-  const [actionErrorMessage, setActionErrorMessage] = useState<string | null>(null);
   const [undoStatus, setUndoStatus] = useState<{ user: User; restoreActive: boolean } | null>(null);
 
   const discardUserForm = () => {
@@ -99,7 +97,7 @@ export const UsersView: React.FC = () => {
 
   useEffect(() => {
     if (!undoStatus) return;
-    const timeout = window.setTimeout(() => setUndoStatus(null), 6000);
+    const timeout = window.setTimeout(() => setUndoStatus(null), 8000);
     return () => window.clearTimeout(timeout);
   }, [undoStatus]);
 
@@ -186,8 +184,7 @@ export const UsersView: React.FC = () => {
     try {
       if (editingUser) {
         await api.updateUser(editingUser.id, { name, email });
-        setActionSuccessMessage(`Se actualizaron los datos de «${name}».`);
-        setTimeout(() => setActionSuccessMessage(null), 4000);
+        showToast(`Se actualizaron los datos de «${name}».`, 'success');
       } else {
         await api.createUser({
           name,
@@ -195,6 +192,7 @@ export const UsersView: React.FC = () => {
           password,
           roles: [selectedRole],
         });
+        showToast(`Se creó el usuario «${name}».`, 'success');
       }
       setShowModal(false);
       setUserFormDirty(false);
@@ -205,7 +203,7 @@ export const UsersView: React.FC = () => {
       setPassword('');
       await fetchUsers();
     } catch (err: any) {
-      setFormError(err.message || (editingUser ? 'Error al actualizar usuario.' : 'Error al crear usuario.'));
+      showToast(err.message || (editingUser ? 'Error al actualizar usuario.' : 'Error al crear usuario.'), 'error');
     } finally {
       setSubmitting(false);
     }
@@ -243,11 +241,10 @@ export const UsersView: React.FC = () => {
       setChannelAccessDirty(false);
       setConfirmDiscardChannelAccess(false);
       setChannelTarget(null);
-      setActionSuccessMessage(`Canales de «${channelTarget.name}» actualizados correctamente.`);
+      showToast(`Canales de «${channelTarget.name}» actualizados correctamente.`, 'success');
       await fetchUsers();
-      setTimeout(() => setActionSuccessMessage(null), 4000);
     } catch (err: any) {
-      setChannelsError(err.message || 'No se pudieron guardar los canales.');
+      showToast(err.message || 'No se pudieron guardar los canales.', 'error');
     } finally {
       setChannelsSaving(false);
     }
@@ -266,18 +263,20 @@ export const UsersView: React.FC = () => {
     try {
       if (confirmActionType === 'deactivate') {
         await api.updateUserStatus(userToConfirm.id, false);
-        setActionSuccessMessage(`El usuario «${userToConfirm.name}» fue desactivado correctamente.`);
-        setUndoStatus({ user: userToConfirm, restoreActive: true });
+        const undoAction = { user: userToConfirm, restoreActive: true };
+        setUndoStatus(undoAction);
+        showToast(`El usuario «${userToConfirm.name}» fue desactivado correctamente.`, 'success', { label: 'Deshacer', onClick: () => handleUndoStatus(undoAction) });
       } else if (confirmActionType === 'activate') {
         await api.updateUserStatus(userToConfirm.id, true);
-        setActionSuccessMessage(`El usuario «${userToConfirm.name}» fue reactivado correctamente.`);
-        setUndoStatus({ user: userToConfirm, restoreActive: false });
+        const undoAction = { user: userToConfirm, restoreActive: false };
+        setUndoStatus(undoAction);
+        showToast(`El usuario «${userToConfirm.name}» fue reactivado correctamente.`, 'success', { label: 'Deshacer', onClick: () => handleUndoStatus(undoAction) });
       } else if (confirmActionType === 'delete') {
         if (typeof (api as any).deleteUser === 'function') {
           await (api as any).deleteUser(userToConfirm.id);
         }
         setUndoStatus(null);
-        setActionSuccessMessage(`El usuario «${userToConfirm.name}» fue eliminado definitivamente.`);
+        showToast(`El usuario «${userToConfirm.name}» fue eliminado definitivamente.`, 'success');
       }
 
       setIsConfirmModalOpen(false);
@@ -285,32 +284,25 @@ export const UsersView: React.FC = () => {
       setConfirmActionType(null);
       fetchUsers();
 
-      setTimeout(() => {
-        setActionSuccessMessage(null);
-      }, 6000);
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'No se pudo procesar la acción del usuario.');
+      showToast(err.message || 'No se pudo procesar la acción del usuario.', 'error');
       setIsConfirmModalOpen(false);
       setUserToConfirm(null);
       setConfirmActionType(null);
-      setTimeout(() => {
-        setActionErrorMessage(null);
-      }, 5000);
     } finally {
       setIsSubmittingConfirm(false);
     }
   };
 
-  const handleUndoStatus = async () => {
-    if (!undoStatus) return;
+  const handleUndoStatus = async (target = undoStatus) => {
+    if (!target) return;
     try {
-      await api.updateUserStatus(undoStatus.user.id, undoStatus.restoreActive);
-      setActionSuccessMessage(`Se deshizo el cambio de estado de «${undoStatus.user.name}».`);
+      await api.updateUserStatus(target.user.id, target.restoreActive);
+      showToast(`Se deshizo el cambio de estado de «${target.user.name}».`, 'success');
       setUndoStatus(null);
       await fetchUsers();
     } catch (err: any) {
-      setActionErrorMessage(err.message || 'No se pudo deshacer el cambio de estado.');
-      setTimeout(() => setActionErrorMessage(null), 5000);
+      showToast(err.message || 'No se pudo deshacer el cambio de estado.', 'error');
     }
   };
 
@@ -355,52 +347,6 @@ export const UsersView: React.FC = () => {
 
   return (
     <div>
-      {actionSuccessMessage && (
-        <div
-          data-testid="user-action-success-alert"
-          className="alert alert-success"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: '0.5rem',
-            marginBottom: '1rem',
-            background: '#eaf1ee',
-            borderColor: '#a9c8bb',
-            color: '#263c38',
-          }}
-        >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
-            <CheckCircle size={18} color="#5d8f82" />
-            {actionSuccessMessage}
-          </span>
-          {undoStatus && (
-            <button type="button" className="btn btn-sm btn-secondary" onClick={handleUndoStatus}>
-              Deshacer
-            </button>
-          )}
-        </div>
-      )}
-
-      {actionErrorMessage && (
-        <div
-          data-testid="user-action-error-alert"
-          className="alert alert-danger"
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '1rem',
-            background: '#fef2f2',
-            borderColor: '#fca5a5',
-            color: '#991b1b',
-          }}
-        >
-          <AlertTriangle size={18} color="#dc2626" />
-          <span>{actionErrorMessage}</span>
-        </div>
-      )}
-
       <div className="card">
         <div className="card-header">
           <div>

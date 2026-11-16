@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { GitCompare, X, RefreshCw, AlertCircle, ArrowRight, FileText } from 'lucide-react';
 import { api } from '../../services/api';
 import type { FlowVersion, FlowComparisonResult } from '../../types';
+import { useToast } from '../../context/ToastContext';
 
 interface FlowVersionCompareModalProps {
   flowId: string;
@@ -24,6 +25,7 @@ const FlowVersionCompareModalContent: React.FC<FlowVersionCompareModalProps> = (
   initialTargetVersionId,
   onClose,
 }) => {
+  const { showToast } = useToast();
   const defaultSrcId = initialSourceVersionId || (versions.length >= 2 ? versions[versions.length - 1]?.id : versions[0]?.id) || '';
   const defaultTgtId = initialTargetVersionId || (versions.length >= 2 ? versions[0]?.id : versions[0]?.id) || '';
 
@@ -31,10 +33,9 @@ const FlowVersionCompareModalContent: React.FC<FlowVersionCompareModalProps> = (
   const [targetVersionId, setTargetVersionId] = useState<string>(defaultTgtId);
   const [loading, setLoading] = useState(() => Boolean(defaultSrcId && defaultTgtId && defaultSrcId !== defaultTgtId));
   const [rawDiff, setDiff] = useState<FlowComparisonResult | null>(null);
-  const [error, setError] = useState<string | null>(null);
 
   const isSameVersion = Boolean(sourceVersionId && targetVersionId && sourceVersionId === targetVersionId);
-  const effectiveError = isSameVersion ? 'Selecciona dos versiones distintas para comparar.' : error;
+  const effectiveError = isSameVersion ? 'Selecciona dos versiones distintas para comparar.' : null;
   const diff = isSameVersion ? null : rawDiff;
 
   const handleSourceChange = (newSrcId: string) => {
@@ -61,13 +62,12 @@ const FlowVersionCompareModalContent: React.FC<FlowVersionCompareModalProps> = (
       .then((res) => {
         if (!ignore) {
           setDiff(res.data);
-          setError(null);
           setLoading(false);
         }
       })
       .catch((err: any) => {
         if (!ignore) {
-          setError(err.message || 'Error al comparar versiones');
+          showToast(err.message || 'Error al comparar versiones', 'error');
           setDiff(null);
           setLoading(false);
         }
@@ -76,7 +76,7 @@ const FlowVersionCompareModalContent: React.FC<FlowVersionCompareModalProps> = (
     return () => {
       ignore = true;
     };
-  }, [flowId, sourceVersionId, targetVersionId]);
+  }, [flowId, sourceVersionId, targetVersionId, showToast]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

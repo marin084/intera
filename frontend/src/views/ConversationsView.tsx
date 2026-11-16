@@ -46,6 +46,7 @@ import { ContactDetailPanel } from '../components/inbox/ContactDetailPanel';
 import { CannedResponseAutocomplete } from '../components/inbox/CannedResponseAutocomplete';
 import { CannedResponsesTab } from '../components/inbox/CannedResponsesTab';
 import { CannedResponseModal } from '../components/inbox/CannedResponseModal';
+import { useToast } from '../context/ToastContext';
 import { WhatsAppTemplateModal } from '../components/inbox/WhatsAppTemplateModal';
 import { MessageDeliveryStatus } from '../components/inbox/MessageDeliveryStatus';
 import { AudioMessagePlayer } from '../components/common/AudioMessagePlayer';
@@ -102,6 +103,7 @@ function extractInteractiveOptions(msg: Message): InteractiveOption[] {
 }
 
 export const ConversationsView: React.FC = () => {
+  const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
   const isMobile = useIsMobile();
   const [inboxPreferences] = useState(() => {
@@ -243,15 +245,7 @@ export const ConversationsView: React.FC = () => {
   const requestSeqRef = useRef(0);
   const firstFilterLoadRef = useRef(true);
 
-  const [toastMessage, setToastMessage] = useState<{ message: string; type: 'error' | 'success' | 'info' } | null>(null);
   const [cannedToDelete, setCannedToDelete] = useState<{ id: string; title: string } | null>(null);
-
-  const showToast = useCallback((message: string, type: 'error' | 'success' | 'info' = 'error') => {
-    setToastMessage({ message, type });
-    setTimeout(() => {
-      setToastMessage((prev) => (prev?.message === message ? null : prev));
-    }, 4500);
-  }, []);
 
   useEffect(() => {
     currentPageRef.current = currentPage;
@@ -4359,40 +4353,6 @@ export const ConversationsView: React.FC = () => {
         requiredTextLabel="respuesta rápida"
       />
 
-      {/* Floating Toast Notification */}
-      {toastMessage && (
-        <div
-          data-testid="inbox-toast-notification"
-          style={{
-            position: 'fixed',
-            bottom: '24px',
-            right: '24px',
-            zIndex: 10000,
-            background:
-              toastMessage.type === 'error'
-                ? '#EF4444'
-                : toastMessage.type === 'info'
-                ? '#5d8f82'
-                : '#5d8f82',
-            color: 'white',
-            padding: '10px 16px',
-            borderRadius: '8px',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            fontSize: '0.85rem',
-            fontWeight: 500,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-          }}
-        >
-          {toastMessage.type === 'error' ? (
-            <AlertCircle size={16} />
-          ) : (
-            <Check size={16} />
-          )}
-          <span>{toastMessage.message}</span>
-        </div>
-      )}
     </div>
   );
 };

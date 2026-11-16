@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { AlertCircle, BellRing, CheckCircle2, Loader2, Send, ShieldCheck, Trash2 } from 'lucide-react';
 import { api } from '../services/api';
+import { useToast } from '../context/ToastContext';
 
 export const AdminSettingsView: React.FC = () => {
+  const { showToast } = useToast();
   const [configured, setConfigured] = useState(false);
   const [webhookUrl, setWebhookUrl] = useState('');
   const [loading, setLoading] = useState(true);
@@ -12,7 +14,6 @@ export const AdminSettingsView: React.FC = () => {
   const [confirmClear, setConfirmClear] = useState(false);
   const [clearConfirmationText, setClearConfirmationText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
 
   const loadSettings = async () => {
     setLoading(true);
@@ -34,9 +35,8 @@ export const AdminSettingsView: React.FC = () => {
   const handleSave = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
     if (!webhookUrl.trim()) {
-      setError('Pega una URL de webhook nueva para guardarla.');
+      showToast('Pega una URL de webhook nueva para guardarla.', 'error');
       return;
     }
 
@@ -45,10 +45,10 @@ export const AdminSettingsView: React.FC = () => {
       const result = await api.saveDiscordWebhook(webhookUrl.trim());
       setConfigured(result.data.discord_webhook_configured);
       setWebhookUrl('');
-      setSuccess(result.message);
+      showToast(result.message, 'success');
       setConfirmClear(false);
     } catch (err: any) {
-      setError(err.data?.errors?.webhook_url?.[0] || err.message || 'No se pudo guardar el webhook.');
+      showToast(err.data?.errors?.webhook_url?.[0] || err.message || 'No se pudo guardar el webhook.', 'error');
     } finally {
       setSaving(false);
     }
@@ -56,13 +56,12 @@ export const AdminSettingsView: React.FC = () => {
 
   const handleTest = async () => {
     setError(null);
-    setSuccess(null);
     setTesting(true);
     try {
       const result = await api.sendDiscordWebhookTest();
-      setSuccess(result.message);
+      showToast(result.message, 'success');
     } catch (err: any) {
-      setError(err.message || 'No se pudo enviar la notificación de prueba.');
+      showToast(err.message || 'No se pudo enviar la notificación de prueba.', 'error');
     } finally {
       setTesting(false);
     }
@@ -71,16 +70,15 @@ export const AdminSettingsView: React.FC = () => {
   const handleClear = async () => {
     if (clearConfirmationText.trim() !== 'Discord') return;
     setError(null);
-    setSuccess(null);
     setClearing(true);
     try {
       const result = await api.clearDiscordWebhook();
       setConfigured(result.data.discord_webhook_configured);
       setConfirmClear(false);
       setClearConfirmationText('');
-      setSuccess(result.message);
+      showToast(result.message, 'success');
     } catch (err: any) {
-      setError(err.message || 'No se pudo eliminar el webhook.');
+      showToast(err.message || 'No se pudo eliminar el webhook.', 'error');
     } finally {
       setClearing(false);
     }
@@ -108,11 +106,6 @@ export const AdminSettingsView: React.FC = () => {
           {error && (
             <div role="alert" className="alert alert-danger" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <AlertCircle size={18} /> {error}
-            </div>
-          )}
-          {success && (
-            <div role="status" className="alert alert-success" style={{ marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', background: '#eaf1ee', border: '1px solid #a9c8bb', color: '#263c38' }}>
-              <CheckCircle2 size={18} /> {success}
             </div>
           )}
 

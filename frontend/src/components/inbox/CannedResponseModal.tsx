@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { CannedResponse } from '../../types';
 import { api } from '../../services/api';
 import { X, Loader2, Zap, AlertCircle } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
 
 interface CannedResponseModalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ const CannedResponseForm: React.FC<CannedResponseFormProps> = ({
   onClose,
   onSaved,
 }) => {
+  const { showToast } = useToast();
   const [title, setTitle] = useState(cannedResponse?.title || '');
   const [shortcut, setShortcut] = useState(cannedResponse?.shortcut || '');
   const [category, setCategory] = useState(cannedResponse?.category || '');
@@ -68,7 +70,7 @@ const CannedResponseForm: React.FC<CannedResponseFormProps> = ({
       }
       onClose();
     } catch (err: any) {
-      setError(err.message || 'Error al guardar la respuesta rápida.');
+      showToast(err.message || 'Error al guardar la respuesta rápida.', 'error');
     } finally {
       setSaving(false);
     }
