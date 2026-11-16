@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../context/useAuth';
 import { InteraLogo } from '../components/InteraLogo';
-import { Lock, Mail, RefreshCw } from 'lucide-react';
+import { GitBranch, Lock, Mail, MessageSquare, RefreshCw, ShieldCheck, Users } from 'lucide-react';
 import { useToast } from '../context/ToastContext';
 
 export const LoginView: React.FC = () => {
@@ -25,85 +25,94 @@ export const LoginView: React.FC = () => {
   };
 
   return (
-    <div className="login-shell" style={{
-      display: 'flex',
-      minHeight: '100vh',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'linear-gradient(135deg, #263c38 0%, #35564f 100%)',
-      padding: '1.5rem',
-    }}>
-      <div className="login-card" style={{
-        width: '100%',
-        maxWidth: '420px',
-        background: '#ffffff',
-        borderRadius: '12px',
-        padding: '2.5rem 2rem',
-        boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1)',
-      }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <h1 style={{ margin: '0 0 0.75rem', display: 'flex', justifyContent: 'center' }}>
-            <InteraLogo size={52} />
-          </h1>
-          <p style={{ color: '#61726d', fontSize: '0.875rem', marginTop: '0.25rem' }}>
-            Conversaciones que hacen equipo.
-          </p>
-        </div>
+    <main className="login-shell">
+      <section className="login-story" aria-labelledby="login-story-title">
+        <div className="login-story-inner">
+          <div className="login-brand"><InteraLogo variant="dark" size={46} /></div>
 
-        <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Mail size={14} /> Correo Electrónico
-            </label>
-            <input
-              type="email"
-              className="form-input"
-              placeholder="admin@empresa.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              autoFocus
-            />
+          <div className="login-story-copy">
+            <p className="login-eyebrow">ESPACIO DE CONVERSACIONES</p>
+            <h1 id="login-story-title">Conversaciones que hacen equipo.</h1>
+            <p className="login-story-description">
+              Atiende mensajes, automatiza flujos y acompaña a cada persona desde un mismo lugar.
+            </p>
+
+            <ul className="login-highlights" aria-label="Herramientas de Intera">
+              <li><MessageSquare size={18} aria-hidden="true" /><span>Canales conectados en una sola bandeja</span></li>
+              <li><GitBranch size={18} aria-hidden="true" /><span>Flujos conversacionales para responder a tiempo</span></li>
+              <li><Users size={18} aria-hidden="true" /><span>Un equipo coordinado alrededor de cada chat</span></li>
+            </ul>
           </div>
 
-          <div className="form-group">
-            <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-              <Lock size={14} /> Contraseña (mínimo 12 caracteres)
-            </label>
-            <input
-              type="password"
-              className="form-input"
-              placeholder="••••••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={12}
-            />
+          <div className="login-security-note">
+            <ShieldCheck size={16} aria-hidden="true" />
+            <span>Tu espacio cuenta con controles de seguridad para proteger el acceso.</span>
+          </div>
+        </div>
+      </section>
+
+      <section className="login-form-side" aria-labelledby="login-form-title">
+        <div className="login-card">
+          <div className="login-form-heading">
+            <p className="login-eyebrow">BIENVENIDO DE NUEVO</p>
+            <h2 id="login-form-title">Iniciar sesión</h2>
+            <p>Ingresa tus credenciales para acceder a Intera.</p>
           </div>
 
-          <button
-            type="submit"
-            className="btn btn-primary"
-            style={{ width: '100%', justifyContent: 'center', marginTop: '1rem', padding: '0.65rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}
-            disabled={loading}
-          >
-            {loading ? (
-              <>
-                <RefreshCw size={16} className="spin" />
-                <span>Verificando credenciales...</span>
-              </>
-            ) : (
-              'Iniciar Sesión'
-            )}
-          </button>
-        </form>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="login-email" className="form-label login-field-label">
+                <Mail size={15} aria-hidden="true" /> Correo electrónico
+              </label>
+              <input
+                id="login-email"
+                type="email"
+                className="form-input"
+                placeholder="nombre@empresa.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="username"
+              />
+            </div>
 
-        <div style={{ marginTop: '1.5rem', paddingTop: '1.25rem', borderTop: '1px solid #d9e3de', textAlign: 'center' }}>
-          <p style={{ fontSize: '0.75rem', color: '#80918c' }}>
-            Protección contra fuerza bruta y rate-limiting activados.
-          </p>
+            <div className="form-group">
+              <label htmlFor="login-password" className="form-label login-field-label">
+                <Lock size={15} aria-hidden="true" /> Contraseña
+              </label>
+              <input
+                id="login-password"
+                type="password"
+                className="form-input"
+                placeholder="Ingresa tu contraseña"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={12}
+                autoComplete="current-password"
+                aria-describedby="login-password-hint"
+              />
+              <span id="login-password-hint" className="login-field-hint">Mínimo 12 caracteres</span>
+            </div>
+
+            <button
+              type="submit"
+              className="btn btn-primary login-submit"
+              disabled={loading}
+            >
+              {loading ? (
+                <>
+                  <RefreshCw size={16} className="spin" aria-hidden="true" />
+                  <span>Verificando credenciales…</span>
+                </>
+              ) : (
+                'Iniciar sesión'
+              )}
+            </button>
+          </form>
+
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 };
