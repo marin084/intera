@@ -569,6 +569,44 @@ class WebchatApiTest extends TestCase
         $this->assertEquals(1, $count);
     }
 
+    public function test_visitor_message_broadcast_reaches_agent_inbox_and_webchat_conversation(): void
+    {
+        $version = $this->createStandardPublishedFlow();
+        $channel = $this->createWebchatChannel($version, true, ['https://mywebsite.com']);
+        $publicKey = $channel->webchatSettings->public_key;
+
+        $embedToken = $this->postJson("/api/v1/public/webchat/{$publicKey}/embed", [], ['Origin' => 'https://mywebsite.com'])->json('data.embed_token');
+        $visitorToken = $this->postJson("/api/v1/public/webchat/{$publicKey}/sessions", ['embed_token' => $embedToken], ['Origin' => 'https://mywebsite.com'])->json('data.visitor_token');
+        $headers = [
+            'Authorization' => 'Bearer '.$visitorToken,
+            'Origin' => 'https://mywebsite.com',
+        ];
+
+        $start = $this->postJson('/api/v1/public/webchat/conversations/start', [], $headers)->assertStatus(201);
+        $conversationId = $start->json('data.conversation.id');
+        Event::fake([MessageCreated::class]);
+
+        $response = $this->postJson('/api/v1/public/webchat/messages', [
+            'content' => 'Mensaje del visitante para el agente',
+            'client_message_id' => (string) Str::uuid(),
+        ], $headers);
+
+        $response->assertStatus(201);
+        Event::assertDispatched(MessageCreated::class, function (MessageCreated $event) use ($conversationId): bool {
+            if ($event->message->content !== 'Mensaje del visitante para el agente'
+                || $event->message->conversation_id !== $conversationId
+                || $event->message->sender_type->value !== 'contact') {
+                return false;
+            }
+
+            $channels = collect($event->broadcastOn())->pluck('name')->all();
+
+            return in_array('private-inbox', $channels, true)
+                && in_array("private-conversation.{$conversationId}", $channels, true)
+                && in_array("private-webchat.conversation.{$conversationId}", $channels, true);
+        });
+    }
+
     public function test_message_exceeding_max_length_is_rejected(): void
     {
         $version = $this->createStandardPublishedFlow();
@@ -729,6 +767,7 @@ class WebchatApiTest extends TestCase
         $agent->roles()->attach(Role::where('name', 'agent')->first());
 
         $channel = $this->createWebchatChannel();
+        $agent->channels()->attach($channel->id);
         $contact = Contact::create(['display_name' => 'Cliente Test', 'external_identifier' => 'c_1']);
         $conversation = Conversation::create([
             'channel_id' => $channel->id,
@@ -744,8 +783,17 @@ class WebchatApiTest extends TestCase
         ]);
 
         $response->assertStatus(201);
-        Event::assertDispatched(MessageCreated::class, function ($e) {
-            return $e->message->content === 'Hola, soy tu agente de soporte.';
+        Event::assertDispatched(MessageCreated::class, function (MessageCreated $event) use ($conversation): bool {
+            if ($event->message->content !== 'Hola, soy tu agente de soporte.'
+                || $event->message->conversation_id !== $conversation->id) {
+                return false;
+            }
+
+            $channels = collect($event->broadcastOn())->pluck('name')->all();
+
+            return in_array('private-inbox', $channels, true)
+                && in_array("private-conversation.{$conversation->id}", $channels, true)
+                && in_array("private-webchat.conversation.{$conversation->id}", $channels, true);
         });
     }
 

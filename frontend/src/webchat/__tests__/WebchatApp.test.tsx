@@ -1,8 +1,12 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { WebchatApp } from '../WebchatApp';
 import { sortAndDeduplicateWebchatMessages } from '../utils';
 import type { WebchatMessage } from '../types';
+
+const echoMock = vi.hoisted(() => ({
+  listeners: {} as Record<string, (event: any) => void>,
+}));
 
 // Mock Echo
 vi.mock('../../services/echo', () => ({
@@ -14,9 +18,15 @@ vi.mock('../../services/echo', () => ({
         },
       },
     },
-    private: () => ({
-      listen: vi.fn().mockReturnThis(),
-    }),
+    private: (channelName: string) => {
+      const channel = {
+        listen: (eventName: string, callback: (event: any) => void) => {
+          echoMock.listeners[`${channelName}:${eventName}`] = callback;
+          return channel;
+        },
+      };
+      return channel;
+    },
     leave: vi.fn(),
     disconnect: vi.fn(),
   }),
@@ -44,6 +54,7 @@ Object.defineProperty(window, 'localStorage', {
 describe('WebchatApp Widget', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    Object.keys(echoMock.listeners).forEach((key) => delete echoMock.listeners[key]);
     mockLocalStorage.clear();
     // Clear URL search params
     window.history.replaceState({}, '', '/widget.html');
@@ -237,6 +248,51 @@ describe('WebchatApp Widget', () => {
     await waitFor(() => {
       expect(sendMessageMock).toHaveBeenCalled();
     });
+  });
+
+  it('shows an agent reply received through the conversation realtime channel', async () => {
+    window.history.replaceState({}, '', '/widget.html?channel=test_public_key');
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input: any) => {
+      const url = typeof input === 'string' ? input : input.url;
+      if (url.includes('/embed')) {
+        return new Response(JSON.stringify({
+          data: { embed_token: 'embed-1', settings: { display_name: 'Chat Bot' } },
+        }), { status: 200 });
+      }
+      if (url.includes('/sessions')) {
+        return new Response(JSON.stringify({
+          data: { id: 'session-1', visitor_token: 'visitor-1', active_conversation_id: 'conv-realtime-1' },
+        }), { status: 201 });
+      }
+      if (url.includes('/conversations/start')) {
+        return new Response(JSON.stringify({
+          data: { conversation: { id: 'conv-realtime-1', status: 'assigned' }, messages: [] },
+        }), { status: 201 });
+      }
+      return new Response(JSON.stringify({ data: [] }), { status: 200 });
+    });
+
+    render(<WebchatApp />);
+
+    await waitFor(() => {
+      expect(echoMock.listeners['webchat.conversation.conv-realtime-1:.MessageCreated']).toBeTypeOf('function');
+    });
+
+    act(() => {
+      echoMock.listeners['webchat.conversation.conv-realtime-1:.MessageCreated']({
+        id: 'agent-message-1',
+        conversation_id: 'conv-realtime-1',
+        sender_type: 'agent',
+        direction: 'outbound',
+        message_type: 'text',
+        visibility: 'public',
+        content: 'Respuesta del agente en tiempo real',
+        sent_at: '2026-11-16T12:00:00Z',
+      });
+    });
+
+    expect(await screen.findByText('Respuesta del agente en tiempo real')).toBeInTheDocument();
   });
 
   it('displays human handoff banner when status is waiting_agent', async () => {

@@ -105,6 +105,8 @@ function extractInteractiveOptions(msg: Message): InteractiveOption[] {
 export const ConversationsView: React.FC = () => {
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
+  const hasPermissionRef = useRef(hasPermission);
+  hasPermissionRef.current = hasPermission;
   const isMobile = useIsMobile();
   const [inboxPreferences] = useState(() => {
     try {
@@ -1216,7 +1218,7 @@ export const ConversationsView: React.FC = () => {
     });
 
     inboxChannel.listen('.ConversationUpdated', (event: any) => {
-      const isAgentOnly = !hasPermission('conversations.view_all');
+      const isAgentOnly = !hasPermissionRef.current('conversations.view_all');
       const isAssignedToCurrent = event.assigned_user_id === user?.id;
       const isClosingAssignedToCurrent = event.status === 'closed' && event.closing_assigned_user_id === user?.id;
 
@@ -1309,7 +1311,7 @@ export const ConversationsView: React.FC = () => {
     });
 
     inboxChannel.listen('.ConversationAssigned', (event: any) => {
-      const isAgentOnly = !hasPermission('conversations.view_all');
+      const isAgentOnly = !hasPermissionRef.current('conversations.view_all');
       const isAssignedToCurrent = event.assigned_user_id === user?.id;
 
       if (isAgentOnly && !isAssignedToCurrent) {
@@ -1571,7 +1573,7 @@ export const ConversationsView: React.FC = () => {
         echoRef.current = null;
       }
     };
-  }, [user?.id, hasPermission, matchesCurrentFilters, triggerNewChatNotification, triggerWaitingQueueNotification, showToast]);
+  }, [user?.id, matchesCurrentFilters, triggerNewChatNotification, triggerWaitingQueueNotification, showToast]);
 
   // Keep the inbox usable when the WebSocket is unavailable. This also
   // reconciles messages missed during short network interruptions.
