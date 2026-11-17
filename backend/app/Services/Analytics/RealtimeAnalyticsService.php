@@ -7,9 +7,9 @@ use App\Enums\MessageDirection;
 use App\Enums\MessageSenderType;
 use App\Models\Channel;
 use App\Models\Conversation;
-use App\Models\ConversationAssignment;
 use App\Models\ConversationQueueEntry;
 use App\Models\Message;
+use App\Models\Team;
 use App\Models\WebchatSession;
 use App\Services\Presence\AgentAvailabilityService;
 use Carbon\Carbon;
@@ -83,6 +83,7 @@ class RealtimeAnalyticsService
         // 5. Operational times and queues
         $avgQueueWaitSeconds = $this->calculateAvgQueueWaitSeconds($channelId);
         $avgFirstResponseSeconds = $this->calculateAvgFirstResponseSeconds($channelId);
+        $avgNextResponseSeconds = $this->calculateAvgNextResponseSeconds($channelId);
         $avgResolutionSeconds = $this->calculateAvgResolutionSeconds($channelId);
 
         // 6. Agent conversations status
@@ -120,6 +121,8 @@ class RealtimeAnalyticsService
                 'avg_queue_wait_formatted' => $this->formatSeconds($avgQueueWaitSeconds),
                 'avg_first_response_seconds' => $avgFirstResponseSeconds,
                 'avg_first_response_formatted' => $this->formatSeconds($avgFirstResponseSeconds),
+                'avg_next_response_seconds' => $avgNextResponseSeconds,
+                'avg_next_response_formatted' => $this->formatSeconds($avgNextResponseSeconds),
                 'avg_resolution_seconds' => $avgResolutionSeconds,
                 'avg_resolution_formatted' => $this->formatSeconds($avgResolutionSeconds),
             ],
@@ -129,6 +132,7 @@ class RealtimeAnalyticsService
                 'active_agents_count' => $onlineAgentsCount,
             ],
             'channels_summary' => $channelsSummary,
+            'team_sla_summary' => $this->buildTeamSlaSummary($channelId),
             'updated_at' => $now->toIso8601String(),
         ];
     }
@@ -205,40 +209,191 @@ class RealtimeAnalyticsService
         return count($waitTimes) > 0 ? (int) round(array_sum($waitTimes) / count($waitTimes)) : 0;
     }
 
-    /**
-     * Calculate average time from assignment to first agent message.
-     */
+    /** Calculate first human response from the human handoff, including time spent waiting in the queue. */
     protected function calculateAvgFirstResponseSeconds(?string $channelId = null): int
     {
         $today = now()->startOfDay();
+        $entries = ConversationQueueEntry::query()
+            ->where('exit_reason', 'assigned')
+            ->whereNotNull('assigned_at')
+            ->where('assigned_at', '>=', $today)
+            ->whereHas('conversation', fn (Builder $query) => $query->when($channelId, fn ($q) => $q->where('channel_id', $channelId)))
+            ->get(['conversation_id', 'entered_at']);
 
-        $assignments = ConversationAssignment::query()
-            ->join('conversations', 'conversation_assignments.conversation_id', '=', 'conversations.id')
-            ->when($channelId, fn (Builder $q) => $q->where('conversations.channel_id', $channelId))
-            ->where('conversation_assignments.assigned_at', '>=', $today)
-            ->select('conversation_assignments.conversation_id', 'conversation_assignments.assigned_at')
-            ->get();
+        return $this->averageHumanResponseSeconds($entries);
+    }
 
-        $firstResponseTimes = [];
-        foreach ($assignments as $assign) {
-            $firstAgentMsg = Message::query()
-                ->where('conversation_id', $assign->conversation_id)
-                ->where('sender_type', MessageSenderType::AGENT->value)
-                ->where('sent_at', '>=', $assign->assigned_at)
-                ->orderBy('sent_at')
-                ->first(['sent_at']);
+    /** Average time from the latest customer reply in a turn to the next public human reply. */
+    protected function calculateAvgNextResponseSeconds(?string $channelId = null): int
+    {
+        $today = now()->startOfDay();
+        $entries = ConversationQueueEntry::query()
+            ->where('exit_reason', 'assigned')
+            ->whereNotNull('assigned_at')
+            ->where('assigned_at', '>=', $today)
+            ->whereHas('conversation', fn (Builder $query) => $query->when($channelId, fn ($q) => $q->where('channel_id', $channelId)))
+            ->get(['conversation_id', 'entered_at']);
 
-            if ($firstAgentMsg) {
-                $assignTime = Carbon::parse($assign->assigned_at);
-                $msgTime = Carbon::parse($firstAgentMsg->sent_at);
-                $diff = abs((int) $msgTime->diffInSeconds($assignTime));
-                if ($diff <= 86400) {
-                    $firstResponseTimes[] = $diff;
+        if ($entries->isEmpty()) return 0;
+        $messages = $this->messagesSinceQueueEntry($entries, includeInbound: true);
+        $durations = [];
+
+        foreach ($entries as $entry) {
+            $firstHumanSeen = false;
+            $latestInboundAt = null;
+            foreach ($messages->get($entry->conversation_id, collect()) as $message) {
+                $sentAt = Carbon::parse($message->sent_at);
+                if ($sentAt->lessThan(Carbon::parse($entry->entered_at))) continue;
+
+                if ($message->sender_type === MessageSenderType::AGENT) {
+                    if (! $firstHumanSeen) {
+                        $firstHumanSeen = true;
+                        continue;
+                    }
+                    if ($latestInboundAt) {
+                        $seconds = max(0, $sentAt->getTimestamp() - $latestInboundAt->getTimestamp());
+                        if ($seconds <= 86400) $durations[] = $seconds;
+                        $latestInboundAt = null;
+                    }
+                } elseif ($firstHumanSeen && $message->sender_type === MessageSenderType::CONTACT
+                    && $message->direction === MessageDirection::INBOUND) {
+                    $latestInboundAt = $sentAt;
                 }
             }
         }
 
-        return count($firstResponseTimes) > 0 ? (int) round(array_sum($firstResponseTimes) / count($firstResponseTimes)) : 0;
+        return $durations ? (int) round(array_sum($durations) / count($durations)) : 0;
+    }
+
+    /** @param \Illuminate\Support\Collection<int, ConversationQueueEntry> $entries */
+    protected function averageHumanResponseSeconds($entries): int
+    {
+        if ($entries->isEmpty()) return 0;
+        $messages = $this->messagesSinceQueueEntry($entries, includeInbound: false);
+        $durations = [];
+        foreach ($entries as $entry) {
+            $start = Carbon::parse($entry->entered_at);
+            $first = $messages->get($entry->conversation_id, collect())
+                ->first(fn ($message) => Carbon::parse($message->sent_at)->greaterThanOrEqualTo($start));
+            if (! $first) continue;
+            $seconds = Carbon::parse($first->sent_at)->getTimestamp() - $start->getTimestamp();
+            if ($seconds >= 0 && $seconds <= 86400) $durations[] = $seconds;
+        }
+
+        return $durations ? (int) round(array_sum($durations) / count($durations)) : 0;
+    }
+
+    /** Fetch only public human replies (and optionally customer messages) for queue intervals in one query. */
+    protected function messagesSinceQueueEntry($entries, bool $includeInbound): \Illuminate\Support\Collection
+    {
+        $conversationIds = $entries->pluck('conversation_id')->unique()->values();
+        if ($conversationIds->isEmpty()) return collect();
+
+        $query = Message::query()
+            ->whereIn('conversation_id', $conversationIds)
+            ->where(function (Builder $query) use ($includeInbound) {
+                $query->where(fn ($human) => $human
+                    ->where('sender_type', MessageSenderType::AGENT->value)
+                    ->where('direction', MessageDirection::OUTBOUND->value)
+                    ->whereIn('visibility', ['public', 'external']));
+                if ($includeInbound) {
+                    $query->orWhere(fn ($contact) => $contact
+                        ->where('sender_type', MessageSenderType::CONTACT->value)
+                        ->where('direction', MessageDirection::INBOUND->value));
+                }
+            });
+
+        $earliestStart = $entries->min(fn ($entry) => Carbon::parse($entry->entered_at)->getTimestamp());
+        if ($earliestStart) $query->where('sent_at', '>=', Carbon::createFromTimestamp($earliestStart));
+
+        return $query->orderBy('sent_at')->get(['conversation_id', 'sender_type', 'direction', 'sent_at'])->groupBy('conversation_id');
+    }
+
+    /** Current queue and response objective performance grouped by team for the selected channel. */
+    protected function buildTeamSlaSummary(?string $channelId = null): array
+    {
+        $teams = Team::query()->orderBy('name')->get();
+        $today = now()->startOfDay();
+        $rows = [];
+
+        foreach ($teams as $team) {
+            $queueTarget = (int) ($team->queue_wait_target_seconds ?? config('teams.service_targets.queue_wait_seconds', 120));
+            $firstTarget = (int) ($team->first_response_target_seconds ?? config('teams.service_targets.first_response_seconds', 300));
+            $entries = ConversationQueueEntry::query()
+                ->where('team_id', $team->id)
+                ->where('exit_reason', 'assigned')
+                ->whereNotNull('assigned_at')
+                ->where('assigned_at', '>=', $today)
+                ->whereHas('conversation', fn (Builder $query) => $query->when($channelId, fn ($q) => $q->where('channel_id', $channelId)))
+                ->get(['id', 'conversation_id', 'entered_at', 'assigned_at']);
+
+            $queueDurations = $entries->map(fn ($entry) => max(0, Carbon::parse($entry->assigned_at)->getTimestamp() - Carbon::parse($entry->entered_at)->getTimestamp()));
+            $activeEntries = ConversationQueueEntry::query()
+                ->where('team_id', $team->id)
+                ->whereHas('conversation', fn (Builder $query) => $query
+                    ->where('team_id', $team->id)
+                    ->whereIn('status', [ConversationStatus::WAITING_AGENT->value, ConversationStatus::ASSIGNED->value])
+                    ->when($channelId, fn ($channelQuery) => $channelQuery->where('channel_id', $channelId)))
+                ->orderByDesc('entered_at')
+                ->orderByDesc('id')
+                ->get(['id', 'conversation_id', 'entered_at', 'assigned_at'])
+                ->groupBy('conversation_id')
+                ->map(fn ($conversationEntries) => $conversationEntries->first())
+                ->values();
+            $responseEntries = $entries->concat($activeEntries)->unique('id')->values();
+            $firstMessages = $this->messagesSinceQueueEntry($responseEntries, includeInbound: false);
+            $firstDurations = [];
+            $firstResponseMissed = [];
+            foreach ($entries as $entry) {
+                $start = Carbon::parse($entry->entered_at);
+                $message = $firstMessages->get($entry->conversation_id, collect())
+                    ->first(fn ($candidate) => Carbon::parse($candidate->sent_at)->greaterThanOrEqualTo($start));
+                if ($message) {
+                    $seconds = Carbon::parse($message->sent_at)->getTimestamp() - $start->getTimestamp();
+                    if ($seconds >= 0 && $seconds <= 86400) $firstDurations[] = $seconds;
+                } elseif ($start->getTimestamp() + $firstTarget < now()->timestamp) {
+                    $firstResponseMissed[$entry->id] = true;
+                }
+            }
+            foreach ($activeEntries as $entry) {
+                $start = Carbon::parse($entry->entered_at);
+                $message = $firstMessages->get($entry->conversation_id, collect())
+                    ->first(fn ($candidate) => Carbon::parse($candidate->sent_at)->greaterThanOrEqualTo($start));
+                if (! $message && $start->getTimestamp() + $firstTarget < now()->timestamp) {
+                    $firstResponseMissed[$entry->id] = true;
+                }
+            }
+
+            $waiting = ConversationQueueEntry::query()
+                ->where('team_id', $team->id)
+                ->whereNull('ended_at')
+                ->whereHas('conversation', fn (Builder $query) => $query
+                    ->where('team_id', $team->id)
+                    ->where('status', ConversationStatus::WAITING_AGENT->value)
+                    ->whereNull('assigned_user_id')
+                    ->when($channelId, fn ($q) => $q->where('channel_id', $channelId)))
+                ->get(['entered_at']);
+            $overdue = $waiting->filter(fn ($entry) => Carbon::parse($entry->entered_at)->getTimestamp() + $queueTarget < now()->timestamp)->count();
+
+            if ($entries->isEmpty() && $waiting->isEmpty() && $activeEntries->isEmpty()) continue;
+            $rows[] = [
+                'team_id' => (string) $team->id,
+                'team_name' => (string) $team->name,
+                'waiting_count' => $waiting->count(),
+                'queue_overdue_count' => $overdue,
+                'queue_target_seconds' => $queueTarget,
+                'queue_sla_met_percent' => $queueDurations->isNotEmpty()
+                    ? (int) round($queueDurations->filter(fn ($seconds) => $seconds <= $queueTarget)->count() * 100 / $queueDurations->count())
+                    : null,
+                'first_response_target_seconds' => $firstTarget,
+                'first_response_overdue_count' => count($firstResponseMissed),
+                'first_response_sla_met_percent' => (count($firstDurations) + count($firstResponseMissed)) > 0
+                    ? (int) round(count(array_filter($firstDurations, fn ($seconds) => $seconds <= $firstTarget)) * 100 / (count($firstDurations) + count($firstResponseMissed)))
+                    : null,
+            ];
+        }
+
+        return $rows;
     }
 
     /**
@@ -250,13 +405,21 @@ class RealtimeAnalyticsService
             ->when($channelId, fn (Builder $q) => $q->where('channel_id', $channelId))
             ->where('status', ConversationStatus::CLOSED->value)
             ->where('closed_at', '>=', now()->startOfDay())
-            ->get(['started_at', 'created_at', 'closed_at']);
+            ->get(['id', 'closed_at']);
 
         $durations = [];
+        $firstHandoffs = ConversationQueueEntry::query()
+            ->whereIn('conversation_id', $closedToday->pluck('id'))
+            ->orderBy('entered_at')
+            ->get(['conversation_id', 'entered_at'])
+            ->groupBy('conversation_id')
+            ->map(fn ($entries) => $entries->first());
         foreach ($closedToday as $conv) {
-            $start = Carbon::parse($conv->started_at ?? $conv->created_at);
+            $handoff = $firstHandoffs->get($conv->id);
+            if (! $handoff) continue;
+            $start = Carbon::parse($handoff->entered_at);
             $closed = Carbon::parse($conv->closed_at);
-            $diff = abs((int) $closed->diffInSeconds($start));
+            $diff = $closed->getTimestamp() - $start->getTimestamp();
             if ($diff <= 86400 * 7) {
                 $durations[] = $diff;
             }

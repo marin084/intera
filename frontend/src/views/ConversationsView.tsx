@@ -111,6 +111,12 @@ function formatQueueDuration(queuedAt: string | null | undefined, nowMs: number)
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+function formatSlaSeconds(seconds: number): string {
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes} min` : `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
 export const ConversationsView: React.FC = () => {
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
@@ -1965,6 +1971,22 @@ export const ConversationsView: React.FC = () => {
     }
   };
 
+  const handlePriorityChange = async (priority: 'low' | 'normal' | 'high' | 'urgent') => {
+    if (!selectedConversation || selectedConversation.priority === priority) return;
+    const conversationId = selectedConversation.id;
+    const previousPriority = selectedConversation.priority || 'normal';
+    setSelectedConversation((current) => current ? { ...current, priority } : current);
+    setConversations((current) => current.map((conversation) => conversation.id === conversationId ? { ...conversation, priority } : conversation));
+    try {
+      await api.updateConversationPriority(conversationId, priority);
+      showToast('Prioridad actualizada.', 'success');
+    } catch (err: any) {
+      setSelectedConversation((current) => current?.id === conversationId ? { ...current, priority: previousPriority } : current);
+      setConversations((current) => current.map((conversation) => conversation.id === conversationId ? { ...conversation, priority: previousPriority } : conversation));
+      showToast(err.message || 'No se pudo actualizar la prioridad.', 'error');
+    }
+  };
+
   const handleRemoveTagFromHeader = async (tagIdentifier: string) => {
     if (!selectedConversation) return;
     try {
@@ -2605,6 +2627,13 @@ export const ConversationsView: React.FC = () => {
                 filteredConversations.map((conv) => {
                   const isSelected = selectedConversation?.id === conv.id;
                   const isWaiting = conv.status === 'waiting_agent';
+                  const queueDeadlineMs = conv.sla?.queue_deadline_at ? new Date(conv.sla.queue_deadline_at).getTime() : null;
+                  const queueWaitOverdue = queueDeadlineMs !== null && currentNow >= queueDeadlineMs;
+                  const firstResponseDeadlineMs = conv.sla?.first_response_deadline_at ? new Date(conv.sla.first_response_deadline_at).getTime() : null;
+                  const firstResponseOverdue = firstResponseDeadlineMs !== null && currentNow >= firstResponseDeadlineMs;
+                  const liveFirstResponseSeconds = conv.sla?.first_response_pending && conv.sla.first_response_started_at
+                    ? Math.max(0, Math.floor((currentNow - new Date(conv.sla.first_response_started_at).getTime()) / 1000))
+                    : conv.sla?.first_response_seconds;
 
                   return (
                     <div
@@ -2640,7 +2669,24 @@ export const ConversationsView: React.FC = () => {
                             </span>
                           )}
                         </span>
-                        {getStatusBadge(conv.status)}
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                          {conv.priority && conv.priority !== 'normal' && (
+                            <span
+                              data-testid={`priority-badge-${conv.id}`}
+                              style={{
+                                borderRadius: '9999px',
+                                padding: '0.12rem 0.45rem',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                color: conv.priority === 'urgent' ? '#b42318' : conv.priority === 'high' ? '#a15c07' : '#526174',
+                                background: conv.priority === 'urgent' ? '#fee4e2' : conv.priority === 'high' ? '#fef0c7' : '#eef2f6',
+                              }}
+                            >
+                              {conv.priority === 'urgent' ? 'Urgente' : conv.priority === 'high' ? 'Alta' : 'Baja'}
+                            </span>
+                          )}
+                          {getStatusBadge(conv.status)}
+                        </span>
                       </div>
                       {(conv.contact?.email || conv.contact?.phone) && (
                         <div style={{ display: 'flex', gap: '0.6rem', fontSize: '0.72rem', color: '#61726d', marginBottom: '0.35rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -2765,9 +2811,22 @@ export const ConversationsView: React.FC = () => {
                       </div>
 
                       {isWaiting && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.4rem', color: '#8a5a14', fontSize: '0.72rem' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> En espera {formatQueueDuration(conv.queued_at, currentNow)}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.35rem 0.5rem', marginTop: '0.4rem', color: queueWaitOverdue ? '#b42318' : '#8a5a14', fontSize: '0.72rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> En espera {formatQueueDuration(conv.sla?.queue_wait_started_at || conv.queued_at, currentNow)}</span>
                           {conv.team?.name && <span style={{ color: '#61726d' }}>{conv.team.name}</span>}
+                          {conv.sla && (
+                            <span title={`Objetivo de cola: ${Math.round(conv.sla.queue_wait_target_seconds / 60)} min`}>
+                              {queueWaitOverdue
+                                ? 'Objetivo de espera vencido'
+                                : `Vence ${new Date(conv.sla.queue_deadline_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      {!isWaiting && conv.sla?.first_response_pending && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.35rem 0.5rem', marginTop: '0.4rem', color: firstResponseOverdue ? '#b42318' : '#8a5a14', fontSize: '0.72rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> Primera respuesta · {formatSlaSeconds(liveFirstResponseSeconds ?? 0)}</span>
+                          <span>{firstResponseOverdue ? 'Objetivo vencido' : `Vence ${new Date(conv.sla.first_response_deadline_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}</span>
                         </div>
                       )}
 
@@ -3303,6 +3362,25 @@ export const ConversationsView: React.FC = () => {
                         <span>Más</span>
                       </summary>
                       <div className="inbox-thread-header__more-items" role="group" aria-label="Más acciones de la conversación">
+                        {hasPermission('conversations.assign') && selectedConversation.status !== 'closed' && (
+                          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', fontSize: '0.78rem', color: 'var(--text-main)' }}>
+                            <span>Prioridad</span>
+                            <select
+                              data-testid="conversation-priority-select"
+                              className="form-select"
+                              aria-label="Prioridad de la conversación"
+                              value={selectedConversation.priority || 'normal'}
+                              onChange={(event) => handlePriorityChange(event.target.value as 'low' | 'normal' | 'high' | 'urgent')}
+                              style={{ width: 'auto', minWidth: '145px', fontSize: '0.75rem', padding: '0.3rem 0.45rem' }}
+                            >
+                              <option value="low">Baja</option>
+                              <option value="normal">Normal</option>
+                              <option value="high">Alta</option>
+                              <option value="urgent">Urgente</option>
+                            </select>
+                          </label>
+                        )}
+
                         {execution && (
                           <button
                             type="button"

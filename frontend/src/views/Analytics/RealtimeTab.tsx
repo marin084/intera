@@ -437,13 +437,11 @@ export const RealtimeTab: React.FC<RealtimeTabProps> = ({ onOpenConversation: _o
                   </span>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Objetivo SLA (menor a 2 min):</span>
-                    <span style={{ fontWeight: 600, color: data.operating_times.avg_queue_wait_seconds <= 120 ? '#5d8f82' : '#ea580c' }}>
-                      {data.operating_times.avg_queue_wait_seconds <= 120 ? 'En Rango' : 'Superado'}
-                    </span>
-                  </div>
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Conversaciones con espera vencida:</span>
+                  <strong style={{ color: (data.team_sla_summary || []).reduce((total, team) => total + team.queue_overdue_count, 0) > 0 ? '#b42318' : '#5d8f82' }}>
+                    {(data.team_sla_summary || []).reduce((total, team) => total + team.queue_overdue_count, 0)}
+                  </strong>
                 </div>
               </div>
 
@@ -459,14 +457,14 @@ export const RealtimeTab: React.FC<RealtimeTabProps> = ({ onOpenConversation: _o
                     {data.operating_times.avg_first_response_formatted}
                   </div>
                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Desde asignación hasta el primer saludo del operador
+                    Desde que se solicita atención humana, incluida la espera en cola
                   </span>
                 </div>
 
                 <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Velocidad operativa:</span>
-                    <span style={{ fontWeight: 600, color: '#5d8f82' }}>Óptima</span>
+                    <span style={{ color: 'var(--text-muted)' }}>Respuestas posteriores:</span>
+                    <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{data.operating_times.avg_next_response_formatted || '—'}</span>
                   </div>
                 </div>
               </div>
@@ -496,6 +494,43 @@ export const RealtimeTab: React.FC<RealtimeTabProps> = ({ onOpenConversation: _o
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="card" style={{ marginTop: '1rem', padding: '1rem 1.25rem', borderRadius: '12px' }}>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, margin: 0, color: 'var(--text-main)' }}>Objetivos de atención por equipo</h3>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Los tiempos se comparan con el objetivo configurado en cada equipo. La primera respuesta cuenta desde la solicitud de atención humana.</span>
+              </div>
+              {(data.team_sla_summary || []).length === 0 ? (
+                <p style={{ margin: 0, padding: '0.75rem 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>Todavía no hay conversaciones en cola ni atenciones asignadas hoy para este filtro.</p>
+              ) : (
+                <div style={{ overflowX: 'auto' }}>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '0.82rem' }}>
+                    <thead>
+                      <tr style={{ borderBottom: '1px solid var(--border)', color: 'var(--text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>
+                        <th style={{ padding: '0.6rem 0.5rem' }}>Equipo</th>
+                        <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>En espera</th>
+                        <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>Espera vencida</th>
+                        <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>Cola dentro del objetivo hoy</th>
+                        <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>1.ª respuesta dentro del objetivo hoy</th>
+                        <th style={{ padding: '0.6rem 0.5rem', textAlign: 'center' }}>1.ª respuesta vencida</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.team_sla_summary.map((team) => (
+                        <tr key={team.team_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                          <td style={{ padding: '0.75rem 0.5rem', fontWeight: 600, color: 'var(--text-main)' }}>{team.team_name}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>{team.waiting_count}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: team.queue_overdue_count ? '#b42318' : 'var(--text-main)', fontWeight: team.queue_overdue_count ? 700 : 400 }}>{team.queue_overdue_count}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>{team.queue_sla_met_percent == null ? '—' : <>{team.queue_sla_met_percent}% <small style={{ color: 'var(--text-muted)' }}>· meta {Math.round(team.queue_target_seconds / 60)} min</small></>}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center' }}>{team.first_response_sla_met_percent == null ? '—' : <>{team.first_response_sla_met_percent}% <small style={{ color: 'var(--text-muted)' }}>· meta {Math.round(team.first_response_target_seconds / 60)} min</small></>}</td>
+                          <td style={{ padding: '0.75rem 0.5rem', textAlign: 'center', color: team.first_response_overdue_count ? '#b42318' : 'var(--text-main)', fontWeight: team.first_response_overdue_count ? 700 : 400 }}>{team.first_response_overdue_count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
 

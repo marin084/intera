@@ -484,7 +484,13 @@ class FlowRuntimeEngine
                     event(new FlowExecutionTransferred($lockedExecution, $currentNode));
 
                     if ($conv) {
-                        app(\App\Services\Routing\ConversationAssignmentService::class)->autoAssign($conv);
+                        $targetTeamId = is_string($currentNode->configuration['team_id'] ?? null)
+                            ? $currentNode->configuration['team_id']
+                            : null;
+                        app(\App\Services\Routing\ConversationAssignmentService::class)->autoAssign(
+                            $conv,
+                            targetTeamId: $targetTeamId
+                        );
                         $freshConv = $conv->fresh(['channel', 'contact', 'assignedUser']);
                         DB::afterCommit(function () use ($freshConv) {
                             if ($freshConv->status === ConversationStatus::WAITING_AGENT) {

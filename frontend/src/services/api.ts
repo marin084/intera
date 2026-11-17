@@ -137,14 +137,18 @@ class ApiService {
     return this.request<{ data: import('../types').Team[] }>('/teams');
   }
 
-  async createTeam(payload: { name: string; description?: string; member_ids: number[]; channel_ids: string[] }) {
+  async getTeamRoutingOptions() {
+    return this.request<{ data: Array<Pick<import('../types').Team, 'id' | 'name' | 'is_default'>> }>('/teams/routing-options');
+  }
+
+  async createTeam(payload: { name: string; description?: string; member_ids: number[]; channel_ids: string[]; queue_wait_target_seconds?: number | null; first_response_target_seconds?: number | null }) {
     return this.request<{ message: string; data: import('../types').Team }>('/teams', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   }
 
-  async updateTeam(id: string, payload: { name?: string; description?: string; member_ids?: number[]; channel_ids?: string[] }) {
+  async updateTeam(id: string, payload: { name?: string; description?: string; member_ids?: number[]; channel_ids?: string[]; queue_wait_target_seconds?: number | null; first_response_target_seconds?: number | null }) {
     return this.request<{ message: string; data: import('../types').Team }>(`/teams/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),
@@ -709,6 +713,13 @@ class ApiService {
 
   async getConversation(id: string) {
     return this.request<{ data: any; messages?: { data: any[]; has_more: boolean; oldest_message_id: string | null } }>(`/conversations/${id}`);
+  }
+
+  async updateConversationPriority(id: string, priority: 'low' | 'normal' | 'high' | 'urgent') {
+    return this.request<{ message: string; data: import('../types').Conversation }>(`/conversations/${id}/priority`, {
+      method: 'PATCH',
+      body: JSON.stringify({ priority }),
+    });
   }
 
   async getConversationMessages(id: string, params?: { before?: string; limit?: number }) {

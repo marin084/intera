@@ -88,9 +88,9 @@ class ConversationAssignmentService
         return $eligibleAgents;
     }
 
-    public function autoAssign(Conversation $conversation, string $strategy = 'random'): ?User
+    public function autoAssign(Conversation $conversation, string $strategy = 'random', ?string $targetTeamId = null): ?User
     {
-        $conversation = app(ConversationQueueService::class)->enter($conversation) ?? $conversation;
+        $conversation = app(ConversationQueueService::class)->enter($conversation, $targetTeamId) ?? $conversation;
         $candidates = $this->getEligibleCandidates($conversation, $strategy);
 
         if ($candidates->isEmpty()) {

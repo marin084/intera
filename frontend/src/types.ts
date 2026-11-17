@@ -18,6 +18,12 @@ export interface Team {
   description: string | null;
   is_default: boolean;
   is_active: boolean;
+  queue_wait_target_seconds?: number | null;
+  first_response_target_seconds?: number | null;
+  queue_wait_target_default_seconds?: number;
+  first_response_target_default_seconds?: number;
+  queue_wait_target_effective_seconds?: number;
+  first_response_target_effective_seconds?: number;
   members: Pick<User, 'id' | 'name' | 'email'>[];
   channels: Pick<Channel, 'id' | 'name' | 'type' | 'is_active'>[];
   waiting_count: number;
@@ -378,6 +384,22 @@ export interface Conversation {
   contact_id: string;
   team_id?: string | null;
   queued_at?: string | null;
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  sla?: {
+    team_id: string;
+    team_name: string | null;
+    queue_wait_seconds: number | null;
+    queue_wait_started_at: string | null;
+    queue_wait_target_seconds: number;
+    queue_wait_overdue: boolean;
+    queue_deadline_at: string;
+    first_response_pending: boolean;
+    first_response_seconds: number | null;
+    first_response_started_at: string | null;
+    first_response_target_seconds: number;
+    first_response_overdue: boolean;
+    first_response_deadline_at: string;
+  } | null;
   status: 'bot' | 'waiting_agent' | 'assigned' | 'closed';
   bot_enabled?: boolean;
   whatsapp_window?: WhatsAppWindow;
@@ -657,8 +679,22 @@ export interface RealtimeOperatingTimes {
   avg_queue_wait_formatted: string;
   avg_first_response_seconds: number;
   avg_first_response_formatted: string;
+  avg_next_response_seconds: number;
+  avg_next_response_formatted: string;
   avg_resolution_seconds: number;
   avg_resolution_formatted: string;
+}
+
+export interface RealtimeTeamSlaSummary {
+  team_id: string;
+  team_name: string;
+  waiting_count: number;
+  queue_overdue_count: number;
+  queue_target_seconds: number;
+  queue_sla_met_percent: number | null;
+  first_response_target_seconds: number;
+  first_response_overdue_count: number;
+  first_response_sla_met_percent: number | null;
 }
 
 export interface RealtimeAgentConversations {
@@ -684,6 +720,7 @@ export interface RealtimeData {
   operating_times: RealtimeOperatingTimes;
   agent_conversations: RealtimeAgentConversations;
   channels_summary: RealtimeChannelSummary[];
+  team_sla_summary: RealtimeTeamSlaSummary[];
   updated_at: string;
 }
 

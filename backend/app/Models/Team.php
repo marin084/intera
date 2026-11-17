@@ -11,11 +11,23 @@ class Team extends Model
 {
     use HasUuids;
 
-    protected $fillable = ['name', 'description', 'is_default', 'is_active'];
+    protected $fillable = [
+        'name',
+        'description',
+        'is_default',
+        'is_active',
+        'queue_wait_target_seconds',
+        'first_response_target_seconds',
+    ];
 
     protected function casts(): array
     {
-        return ['is_default' => 'boolean', 'is_active' => 'boolean'];
+        return [
+            'is_default' => 'boolean',
+            'is_active' => 'boolean',
+            'queue_wait_target_seconds' => 'integer',
+            'first_response_target_seconds' => 'integer',
+        ];
     }
 
     public function members(): BelongsToMany

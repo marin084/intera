@@ -17,6 +17,18 @@ class TeamController extends Controller
 {
     public function __construct(private readonly ConversationQueueService $queueService) {}
 
+    /** Minimal, read-only list used by the flow editor to route human handoffs. */
+    public function routingOptions(): JsonResponse
+    {
+        $teams = Team::query()
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('name')
+            ->get(['id', 'name', 'is_default']);
+
+        return response()->json(['data' => $teams]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $teams = Team::query()
@@ -29,6 +41,17 @@ class TeamController extends Controller
             ->get();
 
         foreach ($teams as $team) {
+            $team->setAttribute('queue_wait_target_default_seconds', (int) config('teams.service_targets.queue_wait_seconds', 120));
+            $team->setAttribute('first_response_target_default_seconds', (int) config('teams.service_targets.first_response_seconds', 300));
+            $team->setAttribute(
+                'queue_wait_target_effective_seconds',
+                $team->queue_wait_target_seconds ?? $team->queue_wait_target_default_seconds
+            );
+            $team->setAttribute(
+                'first_response_target_effective_seconds',
+                $team->first_response_target_seconds ?? $team->first_response_target_default_seconds
+            );
+
             $entries = DB::table('conversation_queue_entries')
                 ->where('team_id', $team->id)
                 ->where('exit_reason', 'assigned')
@@ -57,6 +80,8 @@ class TeamController extends Controller
             $team = Team::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
+                'queue_wait_target_seconds' => $validated['queue_wait_target_seconds'] ?? null,
+                'first_response_target_seconds' => $validated['first_response_target_seconds'] ?? null,
                 'is_default' => false,
                 'is_active' => true,
             ]);
@@ -76,6 +101,12 @@ class TeamController extends Controller
             $team->update([
                 'name' => $validated['name'] ?? $team->name,
                 'description' => array_key_exists('description', $validated) ? $validated['description'] : $team->description,
+                'queue_wait_target_seconds' => array_key_exists('queue_wait_target_seconds', $validated)
+                    ? $validated['queue_wait_target_seconds']
+                    : $team->queue_wait_target_seconds,
+                'first_response_target_seconds' => array_key_exists('first_response_target_seconds', $validated)
+                    ? $validated['first_response_target_seconds']
+                    : $team->first_response_target_seconds,
             ]);
             $this->syncTeamRelations($team, $validated);
         });
@@ -91,6 +122,8 @@ class TeamController extends Controller
         $validated = $request->validate([
             'name' => [$team ? 'sometimes' : 'required', 'string', 'min:2', 'max:120', Rule::unique('teams', 'name')->ignore($team?->id)],
             'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'queue_wait_target_seconds' => ['sometimes', 'nullable', 'integer', 'min:60', 'max:86400'],
+            'first_response_target_seconds' => ['sometimes', 'nullable', 'integer', 'min:60', 'max:86400'],
             'member_ids' => ['sometimes', 'array'],
             'member_ids.*' => ['integer', 'distinct', 'exists:users,id'],
             'channel_ids' => ['sometimes', 'array'],

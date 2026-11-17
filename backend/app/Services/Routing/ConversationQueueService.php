@@ -29,17 +29,20 @@ class ConversationQueueService
     }
 
     /** Start or preserve the current queue interval, measuring from the handoff. */
-    public function enter(Conversation|string $conversation): ?Conversation
+    public function enter(Conversation|string $conversation, ?string $targetTeamId = null): ?Conversation
     {
         $conversationId = $conversation instanceof Conversation ? (string) $conversation->id : $conversation;
 
-        return DB::transaction(function () use ($conversationId) {
+        return DB::transaction(function () use ($conversationId, $targetTeamId) {
             $locked = Conversation::query()->whereKey($conversationId)->lockForUpdate()->first();
             if (! $locked || $locked->status === ConversationStatus::CLOSED || $locked->assigned_user_id !== null) {
                 return $locked;
             }
 
-            $team = $this->teamForChannel((string) $locked->channel_id);
+            $team = $targetTeamId
+                ? Team::query()->whereKey($targetTeamId)->where('is_active', true)->first()
+                : null;
+            $team ??= $this->teamForChannel((string) $locked->channel_id);
             $activeEntry = ConversationQueueEntry::query()
                 ->where('conversation_id', $locked->id)
                 ->whereNull('ended_at')

@@ -127,6 +127,7 @@ Route::prefix('v1')->group(function () {
 
         // Teams and routing queues
         Route::get('/teams', [TeamController::class, 'index'])->middleware('permission:teams.view,teams.manage');
+        Route::get('/teams/routing-options', [TeamController::class, 'routingOptions'])->middleware('permission:teams.view,teams.manage,flows.view,flows.edit');
         Route::post('/teams', [TeamController::class, 'store'])->middleware('permission:teams.manage');
         Route::put('/teams/{team}', [TeamController::class, 'update'])->middleware('permission:teams.manage');
 
@@ -196,6 +197,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/conversations/{conversation}/claim', [ConversationController::class, 'claim'])->middleware('permission:conversations.view_assigned,conversations.reply');
         Route::post('/conversations/{conversation}/assign', [ConversationController::class, 'assign'])->middleware('permission:conversations.assign');
         Route::patch('/conversations/{conversation}', [ConversationController::class, 'update'])->middleware('permission:conversations.assign');
+        Route::patch('/conversations/{conversation}/priority', [ConversationController::class, 'updatePriority'])->middleware('permission:conversations.view_assigned,conversations.assign');
         Route::post('/conversations/{conversation}/close', [ConversationController::class, 'close'])->middleware('permission:conversations.view_assigned,conversations.view_all');
         Route::post('/conversations/{conversation}/read', [ConversationController::class, 'markAsRead'])->middleware('permission:conversations.view_assigned,conversations.view_all');
         Route::post('/conversations/{conversation}/messages', [ConversationController::class, 'sendMessage'])->middleware('permission:conversations.reply');

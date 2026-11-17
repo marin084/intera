@@ -229,6 +229,7 @@ class ConversationController extends Controller
         $query->orderByDesc('last_message_at')->orderByDesc('created_at');
 
         $conversations = $query->paginate(20);
+        app(\App\Services\ConversationSlaService::class)->decorateInbox(collect($conversations->items()));
 
         $counts = $this->calculateTabCounts($user, $isSupervisor, $request->query('channel_id'));
 
@@ -505,6 +506,37 @@ class ConversationController extends Controller
     public function update(Request $request, Conversation $conversation): JsonResponse
     {
         return $this->assign($request, $conversation);
+    }
+
+    public function updatePriority(Request $request, Conversation $conversation): JsonResponse
+    {
+        $user = $request->user();
+        if (! $this->canUserAccessConversation($user, $conversation)) {
+            return response()->json(['message' => 'No tienes acceso a esta conversación.'], 403);
+        }
+
+        $validated = $request->validate([
+            'priority' => ['required', Rule::in(['low', 'normal', 'high', 'urgent'])],
+        ]);
+
+        $updated = DB::transaction(function () use ($conversation, $validated) {
+            $locked = Conversation::query()->whereKey($conversation->id)->lockForUpdate()->firstOrFail();
+            if ($locked->status === ConversationStatus::CLOSED) {
+                abort(422, 'No se puede cambiar la prioridad de una conversación archivada.');
+            }
+            $locked->update(['priority' => $validated['priority']]);
+            return $locked->fresh(['team', 'channel', 'contact', 'assignedUser']);
+        });
+
+        DB::afterCommit(fn () => broadcast(new ConversationUpdated($updated)));
+        AuditLogger::log(
+            action: 'conversation.priority_updated',
+            entityType: 'Conversation',
+            entityId: (string) $updated->id,
+            metadata: ['priority' => $validated['priority']]
+        );
+
+        return response()->json(['message' => 'Prioridad actualizada.', 'data' => $updated]);
     }
 
     public function markAsRead(Request $request, Conversation $conversation): JsonResponse

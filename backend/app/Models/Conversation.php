@@ -26,6 +26,7 @@ class Conversation extends Model
         'contact_id',
         'team_id',
         'queued_at',
+        'priority',
         'status',
         'assigned_user_id',
         'active_flow_id',

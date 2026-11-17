@@ -309,6 +309,8 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
       avg_queue_wait_formatted: '45s',
       avg_first_response_seconds: 90,
       avg_first_response_formatted: '1m 30s',
+      avg_next_response_seconds: 60,
+      avg_next_response_formatted: '1m',
       avg_resolution_seconds: 720,
       avg_resolution_formatted: '12m',
     },
@@ -341,6 +343,7 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
         avg_response_time_formatted: '1m 35s',
       },
     ],
+    team_sla_summary: [],
     updated_at: '2026-11-07T15:00:00Z',
   };
 

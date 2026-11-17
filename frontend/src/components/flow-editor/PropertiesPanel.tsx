@@ -597,8 +597,25 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [previewError, setPreviewError] = useState(false);
+  const [routingTeams, setRoutingTeams] = useState<Array<{ id: string; name: string; is_default: boolean }>>([]);
+  const [routingTeamsError, setRoutingTeamsError] = useState(false);
+  const [routingTeamsReloadKey, setRoutingTeamsReloadKey] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const docFileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (selectedNode?.data?.type !== 'transfer_to_agent') return;
+    let active = true;
+    setRoutingTeamsError(false);
+    api.getTeamRoutingOptions()
+      .then((response) => {
+        if (active) setRoutingTeams(response.data || []);
+      })
+      .catch(() => {
+        if (active) setRoutingTeamsError(true);
+      });
+    return () => { active = false; };
+  }, [selectedNode?.id, selectedNode?.data?.type, routingTeamsReloadKey]);
 
   const availableFlowVars = useMemo(() => {
     return extractAvailableFlowVariables(allNodes, flowVariables, availableVariables);
@@ -3034,6 +3051,31 @@ export const PropertiesPanel: React.FC<PropertiesPanelProps> = ({
                 disabled={isReadOnly}
                 placeholder="Ej. Te comunicaré con uno de nuestros agentes en este momento..."
               />
+              {routingTeamsError ? (
+                <div role="status" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.75rem', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  <span>No pudimos cargar los equipos. La conversación usará el equipo configurado para su canal.</span>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setRoutingTeamsReloadKey((key) => key + 1)} disabled={isReadOnly}>Reintentar</button>
+                </div>
+              ) : routingTeams.length > 0 ? (
+                <div className="form-group" style={{ marginTop: '0.75rem', marginBottom: 0 }}>
+                  <label className="form-label" htmlFor={`transfer-team-${selectedNode.id}`}>Equipo que recibirá la conversación</label>
+                  <select
+                    id={`transfer-team-${selectedNode.id}`}
+                    className="form-select"
+                    value={config.team_id || ''}
+                    onChange={(event) => handleConfigChange('team_id', event.target.value || null)}
+                    disabled={isReadOnly}
+                  >
+                    <option value="">Según el canal</option>
+                    {routingTeams.map((team) => (
+                      <option key={team.id} value={team.id}>{team.name}{team.is_default ? ' · predeterminado' : ''}</option>
+                    ))}
+                  </select>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Si el equipo no está disponible, se usará el equipo del canal.
+                  </span>
+                </div>
+              ) : null}
               <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                 Este nodo es terminal: finaliza la ejecución automática y pasa el control a la cola humana.
               </span>
