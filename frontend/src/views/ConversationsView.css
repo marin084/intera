@@ -15,11 +15,6 @@
   flex-shrink: 0;
 }
 
-/* Keep the open actions menu above the 360 contact pane. */
-.inbox-thread-header--more-open {
-  z-index: 40;
-}
-
 .inbox-thread-header--mobile {
   flex-direction: column;
   align-items: stretch;
@@ -103,6 +98,32 @@
 
 .inbox-thread-header__more-items > button {
   white-space: nowrap;
+}
+
+.inbox-thread-header__more-items--portal {
+  position: fixed;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: max-content;
+  min-width: 13rem;
+  max-width: min(20rem, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 1.5rem);
+  overflow-y: auto;
+  padding: 0.5rem;
+  border: 1px solid var(--border, #d9e3de);
+  border-radius: 0.75rem;
+  background: #fff;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.18);
+}
+
+.inbox-thread-header__more-items--portal > button {
+  width: 100%;
+  justify-content: flex-start;
+  white-space: normal;
+  text-align: left;
 }
 
 .inbox-thread-header__more-trigger::-webkit-details-marker {

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 import { createEcho } from '../services/echo';
 import type { Conversation, FlowExecution, User, Message, Contact, InternalNote, CannedResponse, Tag, Team } from '../types';
@@ -172,7 +173,10 @@ export const ConversationsView: React.FC = () => {
   const [execution, setExecution] = useState<FlowExecution | null>(null);
   const [showExecutionPanel, setShowExecutionPanel] = useState<boolean>(false);
   const conversationMoreMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const conversationMoreTriggerRef = useRef<HTMLElement | null>(null);
+  const conversationMoreItemsRef = useRef<HTMLDivElement | null>(null);
   const [isConversationMoreMenuOpen, setIsConversationMoreMenuOpen] = useState(false);
+  const [conversationMoreMenuPosition, setConversationMoreMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [isContactPanelOpen, setIsContactPanelOpen] = useState<boolean>(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -2330,6 +2334,133 @@ export const ConversationsView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleInboxShortcut);
   }, [filteredConversations, selectedConversation, hasPermission, isSupervisorOrAdmin, user?.id]);
 
+  useLayoutEffect(() => {
+    if (!isConversationMoreMenuOpen) {
+      setConversationMoreMenuPosition(null);
+      return;
+    }
+
+    const updatePosition = () => {
+      const trigger = conversationMoreTriggerRef.current;
+      const menu = conversationMoreItemsRef.current;
+      if (!trigger || !menu) return;
+
+      const triggerRect = trigger.getBoundingClientRect();
+      const menuRect = menu.getBoundingClientRect();
+      const viewportPadding = 12;
+      const left = Math.max(
+        viewportPadding,
+        Math.min(triggerRect.right - menuRect.width, window.innerWidth - menuRect.width - viewportPadding),
+      );
+      let top = triggerRect.bottom + 6;
+      if (top + menuRect.height > window.innerHeight - viewportPadding) {
+        top = Math.max(viewportPadding, triggerRect.top - menuRect.height - 6);
+      }
+
+      setConversationMoreMenuPosition({ top, left });
+    };
+
+    const closeWhenClickingOutside = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (conversationMoreMenuRef.current?.contains(target) || conversationMoreItemsRef.current?.contains(target)) return;
+      if (conversationMoreMenuRef.current) conversationMoreMenuRef.current.open = false;
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    document.addEventListener('pointerdown', closeWhenClickingOutside, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      document.removeEventListener('pointerdown', closeWhenClickingOutside, true);
+    };
+  }, [isConversationMoreMenuOpen]);
+
+  const conversationMoreMenuActions = (
+    <>
+      {execution && (
+        <button
+          type="button"
+          className={`btn btn-sm ${showExecutionPanel ? 'btn-primary' : 'btn-secondary'}`}
+          style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+          onClick={() => setShowExecutionPanel(!showExecutionPanel)}
+          title="Observabilidad del flujo conversacional"
+        >
+          <Zap size={13} />
+          Flujo: {execution.status === 'completed' ? 'Completado' : execution.status === 'running' ? 'En ejecución' : execution.status === 'waiting_input' ? 'Esperando respuesta' : execution.status === 'waiting_agent' ? 'Esperando agente' : execution.status === 'failed' ? 'Falló' : execution.status}
+          {showExecutionPanel ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+        </button>
+      )}
+
+      {selectedConversation?.status !== 'closed' && (
+        <button
+          type="button"
+          data-testid="toggle-bot-btn"
+          className="btn btn-sm"
+          disabled={togglingBot}
+          onClick={handleToggleBot}
+          title={
+            selectedConversation?.bot_enabled !== false
+              ? 'Bot activo: responderá automáticamente (clic para pausar)'
+              : 'Bot pausado: atención humana exclusiva (clic para reanudar)'
+          }
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.35rem',
+            fontSize: '0.8rem',
+            padding: '0.35rem 0.6rem',
+            background: selectedConversation?.bot_enabled !== false ? '#eaf1ee' : '#fffbeb',
+            borderColor: selectedConversation?.bot_enabled !== false ? '#a9c8bb' : '#fde68a',
+            color: selectedConversation?.bot_enabled !== false ? '#5d8f82' : '#d97706',
+            transition: 'all 0.15s ease-in-out',
+          }}
+        >
+          <Power size={14} />
+          <span style={{ fontWeight: 500 }}>
+            {selectedConversation?.bot_enabled !== false ? 'Bot Activo' : 'Bot Pausado'}
+          </span>
+        </button>
+      )}
+
+      {selectedConversation?.status !== 'closed' && (
+        <button
+          type="button"
+          data-testid="restart-flow-btn"
+          className="btn btn-sm btn-secondary"
+          disabled={restartingFlow}
+          onClick={handleRestartFlow}
+          title="Reiniciar flujo del bot para este contacto"
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', padding: '0.35rem 0.6rem' }}
+        >
+          <RotateCcw size={14} className={restartingFlow ? 'animate-spin' : ''} />
+          <span>Reiniciar flujo</span>
+        </button>
+      )}
+
+      <button
+        type="button"
+        data-testid="toggle-contact-panel-btn"
+        className={`btn btn-sm ${isContactPanelOpen ? 'btn-primary' : 'btn-secondary'}`}
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.8rem', padding: '0.35rem 0.6rem' }}
+        onPointerDown={handleOpenContactPanel}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          conversationMoreMenuRef.current?.removeAttribute('open');
+          handleOpenContactPanel();
+        }}
+        title="Ver información del contacto"
+        aria-expanded={isContactPanelOpen}
+        aria-controls="contact-detail-panel"
+      >
+        {isContactPanelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+        <span>Ficha 360°</span>
+      </button>
+    </>
+  );
+
   return (
     <div style={{ height: isMobile ? 'calc(100dvh - 72px)' : 'calc(100vh - 110px)', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       {/* Top Bar with Filter Tabs and Realtime Status (Hidden on mobile when conversation is active to give 100% space to chat) */}
@@ -2950,7 +3081,7 @@ export const ConversationsView: React.FC = () => {
               <>
                 {/* Header */}
                 <div
-                  className={`inbox-thread-header${isMobile ? ' inbox-thread-header--mobile' : ''}${isConversationMoreMenuOpen ? ' inbox-thread-header--more-open' : ''}`}
+                  className={`inbox-thread-header${isMobile ? ' inbox-thread-header--mobile' : ''}`}
                   style={{
                     borderBottom: '1px solid var(--border)',
                     background: '#f4f7f5',
@@ -3362,7 +3493,8 @@ export const ConversationsView: React.FC = () => {
                       data-testid="conversation-header-more"
                       onToggle={(event) => setIsConversationMoreMenuOpen(event.currentTarget.open)}
                       onBlur={(event) => {
-                        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        const nextTarget = event.relatedTarget as Node | null;
+                        if (!event.currentTarget.contains(nextTarget) && !conversationMoreItemsRef.current?.contains(nextTarget)) {
                           event.currentTarget.open = false;
                         }
                       }}
@@ -3378,105 +3510,29 @@ export const ConversationsView: React.FC = () => {
                         }
                       }}
                     >
-                      <summary className="btn btn-sm btn-secondary inbox-thread-header__more-trigger">
+                      <summary ref={conversationMoreTriggerRef} className="btn btn-sm btn-secondary inbox-thread-header__more-trigger">
                         <MoreHorizontal size={15} aria-hidden="true" />
                         <span>Más</span>
                       </summary>
                       <div className="inbox-thread-header__more-items" role="group" aria-label="Más acciones de la conversación">
-                        {execution && (
-                          <button
-                            type="button"
-                            className={`btn btn-sm ${showExecutionPanel ? 'btn-primary' : 'btn-secondary'}`}
-                            style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
-                            onClick={() => setShowExecutionPanel(!showExecutionPanel)}
-                            title="Observabilidad del flujo conversacional"
-                          >
-                            <Zap size={13} />
-                            Flujo: {execution.status === 'completed' ? 'Completado' : execution.status === 'running' ? 'En ejecución' : execution.status === 'waiting_input' ? 'Esperando respuesta' : execution.status === 'waiting_agent' ? 'Esperando agente' : execution.status === 'failed' ? 'Falló' : execution.status}
-                            {showExecutionPanel ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                          </button>
-                        )}
-
-                        {selectedConversation.status !== 'closed' && (
-                          <button
-                            type="button"
-                            data-testid="toggle-bot-btn"
-                            className="btn btn-sm"
-                            disabled={togglingBot}
-                            onClick={handleToggleBot}
-                            title={
-                              selectedConversation.bot_enabled !== false
-                                ? 'Bot activo: responderá automáticamente (clic para pausar)'
-                                : 'Bot pausado: atención humana exclusiva (clic para reanudar)'
-                            }
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                              fontSize: '0.8rem',
-                              padding: '0.35rem 0.6rem',
-                              background: selectedConversation.bot_enabled !== false ? '#eaf1ee' : '#fffbeb',
-                              borderColor: selectedConversation.bot_enabled !== false ? '#a9c8bb' : '#fde68a',
-                              color: selectedConversation.bot_enabled !== false ? '#5d8f82' : '#d97706',
-                              transition: 'all 0.15s ease-in-out',
-                            }}
-                          >
-                            <Power size={14} />
-                            <span style={{ fontWeight: 500 }}>
-                              {selectedConversation.bot_enabled !== false ? 'Bot Activo' : 'Bot Pausado'}
-                            </span>
-                          </button>
-                        )}
-
-                        {selectedConversation.status !== 'closed' && (
-                          <button
-                            type="button"
-                            data-testid="restart-flow-btn"
-                            className="btn btn-sm btn-secondary"
-                            disabled={restartingFlow}
-                            onClick={handleRestartFlow}
-                            title="Reiniciar flujo del bot para este contacto"
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: '0.35rem',
-                              fontSize: '0.8rem',
-                              padding: '0.35rem 0.6rem',
-                            }}
-                          >
-                            <RotateCcw size={14} className={restartingFlow ? 'animate-spin' : ''} />
-                            <span>Reiniciar flujo</span>
-                          </button>
-                        )}
-
-                        <button
-                          type="button"
-                          data-testid="toggle-contact-panel-btn"
-                          className={`btn btn-sm ${isContactPanelOpen ? 'btn-primary' : 'btn-secondary'}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '0.35rem',
-                            fontSize: '0.8rem',
-                            padding: '0.35rem 0.6rem',
-                          }}
-                          onPointerDown={handleOpenContactPanel}
-                          onClick={(event) => {
-                            // iOS Safari can collapse <details> on the same tap
-                            // before the nested action is handled. Open the drawer
-                            // first, then close the menu without bubbling.
-                            event.preventDefault();
-                            event.stopPropagation();
-                            event.currentTarget.closest('details')?.removeAttribute('open');
-                            handleOpenContactPanel();
-                          }}
-                          title="Ver información del contacto"
-                          aria-expanded={isContactPanelOpen}
-                          aria-controls="contact-detail-panel"
-                        >
-                          {isContactPanelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
-                          <span>Ficha 360°</span>
-                        </button>
+                        {isConversationMoreMenuOpen && typeof document !== 'undefined'
+                          ? createPortal(
+                            <div
+                              ref={conversationMoreItemsRef}
+                              className="inbox-thread-header__more-items inbox-thread-header__more-items--portal"
+                              role="group"
+                              aria-label="Más acciones de la conversación"
+                              style={{
+                                top: conversationMoreMenuPosition?.top ?? 0,
+                                left: conversationMoreMenuPosition?.left ?? 0,
+                                visibility: conversationMoreMenuPosition ? 'visible' : 'hidden',
+                              }}
+                            >
+                              {conversationMoreMenuActions}
+                            </div>,
+                            document.body,
+                          )
+                          : conversationMoreMenuActions}
                       </div>
                     </details>
 
