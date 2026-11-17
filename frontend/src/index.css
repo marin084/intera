@@ -2536,6 +2536,10 @@ input[type='number'] {
 
 /* Contact 360 Detail Panel Responsive Off-Canvas Drawer (<= 1024px) */
 @media (max-width: 1024px) {
+  .inbox-thread-header--more-open {
+    z-index: 1402 !important;
+  }
+
   .contact-detail-panel {
     position: fixed !important;
     top: 0;

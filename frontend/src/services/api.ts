@@ -137,14 +137,14 @@ class ApiService {
     return this.request<{ data: import('../types').Team[] }>('/teams');
   }
 
-  async createTeam(payload: { name: string; description?: string; member_ids: number[]; channel_ids: string[] }) {
+  async createTeam(payload: { name: string; description?: string; member_ids: number[]; channel_ids: string[]; queue_wait_target_seconds?: number | null; first_response_target_seconds?: number | null }) {
     return this.request<{ message: string; data: import('../types').Team }>('/teams', {
       method: 'POST',
       body: JSON.stringify(payload),
     });
   }
 
-  async updateTeam(id: string, payload: { name?: string; description?: string; member_ids?: number[]; channel_ids?: string[] }) {
+  async updateTeam(id: string, payload: { name?: string; description?: string; member_ids?: number[]; channel_ids?: string[]; queue_wait_target_seconds?: number | null; first_response_target_seconds?: number | null }) {
     return this.request<{ message: string; data: import('../types').Team }>(`/teams/${id}`, {
       method: 'PUT',
       body: JSON.stringify(payload),

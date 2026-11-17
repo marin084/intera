@@ -111,6 +111,39 @@ function formatQueueDuration(queuedAt: string | null | undefined, nowMs: number)
   return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
 }
 
+type SlaTimerState = 'on_time' | 'at_risk' | 'overdue';
+
+function getSlaTimerState(startedAt: string | null | undefined, targetSeconds: number | undefined, nowMs: number) {
+  if (!startedAt || !targetSeconds || targetSeconds <= 0) return null;
+  const startMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startMs)) return null;
+
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - startMs) / 1000));
+  const remainingSeconds = Math.max(0, targetSeconds - elapsedSeconds);
+  const state: SlaTimerState = elapsedSeconds >= targetSeconds
+    ? 'overdue'
+    : elapsedSeconds >= Math.ceil(targetSeconds * 0.8)
+      ? 'at_risk'
+      : 'on_time';
+
+  return { state, elapsedSeconds, remainingSeconds, overdueSeconds: Math.max(0, elapsedSeconds - targetSeconds) };
+}
+
+function formatSlaClock(seconds: number): string {
+  const safeSeconds = Math.max(0, seconds);
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  if (hours > 0) return `${hours}:${String(minutes).padStart(2, '0')}:${String(remainingSeconds).padStart(2, '0')}`;
+  return `${minutes}:${String(remainingSeconds).padStart(2, '0')}`;
+}
+
+const slaBadgeStyles: Record<SlaTimerState, React.CSSProperties> = {
+  on_time: { background: '#eaf1ee', color: '#456c61', border: '1px solid #d5e3dc' },
+  at_risk: { background: '#fff7ed', color: '#9a3412', border: '1px solid #fed7aa' },
+  overdue: { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' },
+};
+
 export const ConversationsView: React.FC = () => {
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
@@ -138,6 +171,8 @@ export const ConversationsView: React.FC = () => {
   const [selectedConversation, setSelectedConversation] = useState<Conversation | null>(null);
   const [execution, setExecution] = useState<FlowExecution | null>(null);
   const [showExecutionPanel, setShowExecutionPanel] = useState<boolean>(false);
+  const conversationMoreMenuRef = useRef<HTMLDetailsElement | null>(null);
+  const [isConversationMoreMenuOpen, setIsConversationMoreMenuOpen] = useState(false);
   const [isContactPanelOpen, setIsContactPanelOpen] = useState<boolean>(() => {
     try {
       if (typeof window !== 'undefined' && window.localStorage) {
@@ -747,6 +782,17 @@ export const ConversationsView: React.FC = () => {
       // ignore
     }
   }, []);
+
+  useEffect(() => {
+    // Opening the contact drawer can place its backdrop over the action menu
+    // before the menu receives the click event (notably on touch browsers).
+    // Close the menu from the panel state so it cannot remain visibly clipped
+    // behind the drawer.
+    if (isContactPanelOpen && conversationMoreMenuRef.current) {
+      conversationMoreMenuRef.current.open = false;
+      setIsConversationMoreMenuOpen(false);
+    }
+  }, [isContactPanelOpen]);
 
   const handleContactUpdated = (updatedContact: Contact) => {
     const newDisplayName = updatedContact.name || updatedContact.display_name || null;
@@ -2122,9 +2168,9 @@ export const ConversationsView: React.FC = () => {
         (selectedConversation?.status === 'closed' && selectedConversation?.closing_assigned_user_id === user?.id))
   );
 
-  const canReplyToClosedMeta = Boolean(
+  const canReplyToClosedConversation = Boolean(
     selectedConversation?.status === 'closed' &&
-      isSelectedMetaOpen &&
+      (!isSelectedMeta || isSelectedMetaOpen) &&
       isAuthorizedToReplySelected
   );
 
@@ -2605,6 +2651,22 @@ export const ConversationsView: React.FC = () => {
                 filteredConversations.map((conv) => {
                   const isSelected = selectedConversation?.id === conv.id;
                   const isWaiting = conv.status === 'waiting_agent';
+                  const teamSettings = teams.find((team) => team.id === conv.team_id);
+                  const queueTargetSeconds = conv.team?.queue_wait_target_effective_seconds
+                    ?? teamSettings?.queue_wait_target_effective_seconds
+                    ?? 120;
+                  const firstResponseTargetSeconds = conv.team?.first_response_target_effective_seconds
+                    ?? teamSettings?.first_response_target_effective_seconds
+                    ?? 300;
+                  const queueSla = isWaiting
+                    ? getSlaTimerState(conv.queued_at, queueTargetSeconds, currentNow)
+                    : null;
+                  const awaitingFirstResponse = conv.status === 'assigned'
+                    && Boolean(conv.current_assignment_at)
+                    && !conv.first_agent_response_at;
+                  const firstResponseSla = awaitingFirstResponse
+                    ? getSlaTimerState(conv.current_assignment_at, firstResponseTargetSeconds, currentNow)
+                    : null;
 
                   return (
                     <div
@@ -2765,9 +2827,25 @@ export const ConversationsView: React.FC = () => {
                       </div>
 
                       {isWaiting && (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.4rem', color: '#8a5a14', fontSize: '0.72rem' }}>
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> En espera {formatQueueDuration(conv.queued_at, currentNow)}</span>
-                          {conv.team?.name && <span style={{ color: '#61726d' }}>{conv.team.name}</span>}
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem', color: '#8a5a14', fontSize: '0.72rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Clock size={12} /> En espera {formatQueueDuration(conv.queued_at, currentNow)} · meta {formatSlaClock(queueTargetSeconds)}
+                          </span>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+                            {queueSla?.state === 'at_risk' && <span title="Se ha consumido el 80% del objetivo de espera" style={{ ...slaBadgeStyles.at_risk, padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>Por vencer · faltan {formatSlaClock(queueSla.remainingSeconds)}</span>}
+                            {queueSla?.state === 'overdue' && <span title="Se superó el objetivo de espera" style={{ ...slaBadgeStyles.overdue, padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>Vencido · hace {formatSlaClock(queueSla.overdueSeconds)}</span>}
+                            {conv.team?.name && <span style={{ color: '#61726d' }}>{conv.team.name}</span>}
+                          </span>
+                        </div>
+                      )}
+
+                      {awaitingFirstResponse && firstResponseSla && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.4rem', marginTop: '0.4rem', color: '#61726d', fontSize: '0.72rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Clock size={12} /> Primera respuesta {formatQueueDuration(conv.current_assignment_at, currentNow)} · meta {formatSlaClock(firstResponseTargetSeconds)}
+                          </span>
+                          {firstResponseSla.state === 'at_risk' && <span title="Se ha consumido el 80% del objetivo de primera respuesta" style={{ ...slaBadgeStyles.at_risk, padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>Por vencer · faltan {formatSlaClock(firstResponseSla.remainingSeconds)}</span>}
+                          {firstResponseSla.state === 'overdue' && <span title="Se superó el objetivo de primera respuesta" style={{ ...slaBadgeStyles.overdue, padding: '2px 7px', borderRadius: 999, fontWeight: 600 }}>Vencido · hace {formatSlaClock(firstResponseSla.overdueSeconds)}</span>}
                         </div>
                       )}
 
@@ -2872,7 +2950,7 @@ export const ConversationsView: React.FC = () => {
               <>
                 {/* Header */}
                 <div
-                  className={`inbox-thread-header${isMobile ? ' inbox-thread-header--mobile' : ''}`}
+                  className={`inbox-thread-header${isMobile ? ' inbox-thread-header--mobile' : ''}${isConversationMoreMenuOpen ? ' inbox-thread-header--more-open' : ''}`}
                   style={{
                     borderBottom: '1px solid var(--border)',
                     background: '#f4f7f5',
@@ -3279,8 +3357,10 @@ export const ConversationsView: React.FC = () => {
                     )}
 
                     <details
+                      ref={conversationMoreMenuRef}
                       className="inbox-thread-header__more"
                       data-testid="conversation-header-more"
+                      onToggle={(event) => setIsConversationMoreMenuOpen(event.currentTarget.open)}
                       onBlur={(event) => {
                         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
                           event.currentTarget.open = false;
@@ -3609,7 +3689,7 @@ export const ConversationsView: React.FC = () => {
               {/* Message History */}
               <div
                 ref={messagesContainerRef}
-                className={`inbox-thread-messages${selectedConversation.status === 'closed' && !canReplyToClosedMeta ? ' inbox-thread-messages--closed' : ''}`}
+                className={`inbox-thread-messages${selectedConversation.status === 'closed' && !canReplyToClosedConversation ? ' inbox-thread-messages--closed' : ''}`}
                 onScroll={handleScroll}
                 style={{
                   flex: 1,
@@ -3917,7 +3997,7 @@ export const ConversationsView: React.FC = () => {
               </div>
 
               {/* Reply Box or Closed Banner */}
-              {selectedConversation.status === 'closed' && !canReplyToClosedMeta ? (
+              {selectedConversation.status === 'closed' && !canReplyToClosedConversation ? (
                 <div
                   data-testid="conversation-closed-banner"
                   style={{

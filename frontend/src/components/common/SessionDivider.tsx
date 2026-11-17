@@ -31,7 +31,8 @@ export function SessionDivider({ timestamp }: SessionDividerProps) {
         display: 'flex',
         alignItems: 'center',
         gap: '0.75rem',
-        margin: '1rem 0 1.5rem',
+        margin: '1rem 0 0',
+        paddingBottom: '15px',
       }}
     >
       <span style={{ flex: 1, borderTop: '1px solid #dbe2ea' }} />

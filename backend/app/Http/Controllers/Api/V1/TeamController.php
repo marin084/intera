@@ -57,6 +57,8 @@ class TeamController extends Controller
             $team = Team::create([
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
+                'queue_wait_target_seconds' => $validated['queue_wait_target_seconds'] ?? null,
+                'first_response_target_seconds' => $validated['first_response_target_seconds'] ?? null,
                 'is_default' => false,
                 'is_active' => true,
             ]);
@@ -76,6 +78,12 @@ class TeamController extends Controller
             $team->update([
                 'name' => $validated['name'] ?? $team->name,
                 'description' => array_key_exists('description', $validated) ? $validated['description'] : $team->description,
+                'queue_wait_target_seconds' => array_key_exists('queue_wait_target_seconds', $validated)
+                    ? $validated['queue_wait_target_seconds']
+                    : $team->queue_wait_target_seconds,
+                'first_response_target_seconds' => array_key_exists('first_response_target_seconds', $validated)
+                    ? $validated['first_response_target_seconds']
+                    : $team->first_response_target_seconds,
             ]);
             $this->syncTeamRelations($team, $validated);
         });
@@ -91,6 +99,8 @@ class TeamController extends Controller
         $validated = $request->validate([
             'name' => [$team ? 'sometimes' : 'required', 'string', 'min:2', 'max:120', Rule::unique('teams', 'name')->ignore($team?->id)],
             'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
+            'queue_wait_target_seconds' => ['sometimes', 'nullable', 'integer', 'min:60', 'max:86400'],
+            'first_response_target_seconds' => ['sometimes', 'nullable', 'integer', 'min:60', 'max:86400'],
             'member_ids' => ['sometimes', 'array'],
             'member_ids.*' => ['integer', 'distinct', 'exists:users,id'],
             'channel_ids' => ['sometimes', 'array'],

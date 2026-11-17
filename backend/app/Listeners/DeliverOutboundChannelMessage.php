@@ -88,6 +88,17 @@ class DeliverOutboundChannelMessage
 
         // Webchat channel: delivered via WebSocket (Reverb) on MessageCreated, no external API dispatch
         if ($channel->type === ChannelType::WEBCHAT) {
+            if ($conversation->status === ConversationStatus::CLOSED) {
+                try {
+                    $this->outboxService->reopenClosedConversationAfterAcceptedAgentMessage($fresh);
+                } catch (\Throwable $e) {
+                    Log::error('[DeliverOutboundChannelMessage] Error reopening closed webchat conversation after agent reply: '.WhatsAppChannelAdapter::sanitizeErrorMessage($e->getMessage()), [
+                        'message_id' => $fresh->id,
+                        'conversation_id' => $conversation->id,
+                    ]);
+                }
+            }
+
             optional($lock)->release();
 
             return;

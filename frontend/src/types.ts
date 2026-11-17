@@ -18,6 +18,12 @@ export interface Team {
   description: string | null;
   is_default: boolean;
   is_active: boolean;
+  queue_wait_target_seconds?: number | null;
+  first_response_target_seconds?: number | null;
+  queue_wait_target_default_seconds?: number;
+  first_response_target_default_seconds?: number;
+  queue_wait_target_effective_seconds?: number;
+  first_response_target_effective_seconds?: number;
   members: Pick<User, 'id' | 'name' | 'email'>[];
   channels: Pick<Channel, 'id' | 'name' | 'type' | 'is_active'>[];
   waiting_count: number;
@@ -389,7 +395,14 @@ export interface Conversation {
   last_message_at: string | null;
   closed_at: string | null;
   channel?: { id: string; name: string; type: string };
-  team?: { id: string; name: string } | null;
+  team?: {
+    id: string;
+    name: string;
+    queue_wait_target_effective_seconds?: number;
+    first_response_target_effective_seconds?: number;
+  } | null;
+  current_assignment_at?: string | null;
+  first_agent_response_at?: string | null;
   contact?: Contact;
   assigned_user?: { id: number; name: string; email: string };
   messages?: Message[];
@@ -661,6 +674,13 @@ export interface RealtimeOperatingTimes {
   avg_resolution_formatted: string;
 }
 
+export interface RealtimeTargetAlertCounts {
+  tracked: number;
+  on_time: number;
+  at_risk: number;
+  overdue: number;
+}
+
 export interface RealtimeAgentConversations {
   ongoing: number;
   closed_today: number;
@@ -682,6 +702,10 @@ export interface RealtimeChannelSummary {
 export interface RealtimeData {
   last_hour_kpis: RealtimeLastHourKPIs;
   operating_times: RealtimeOperatingTimes;
+  service_target_alerts?: {
+    queue: RealtimeTargetAlertCounts;
+    first_response: RealtimeTargetAlertCounts;
+  };
   agent_conversations: RealtimeAgentConversations;
   channels_summary: RealtimeChannelSummary[];
   updated_at: string;

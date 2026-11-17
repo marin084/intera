@@ -60,7 +60,7 @@ class ConversationController extends Controller
                 'channel:id,name,type',
                 'contact:id,display_name,email,phone,country,external_identifier',
                 'assignedUser:id,name,email',
-                'team:id,name',
+                'team:id,name,queue_wait_target_seconds,first_response_target_seconds',
                 'assignments.assignedUser:id,name',
                 'tags:id,name,color,slug',
             ]);
@@ -183,6 +183,35 @@ class ConversationController extends Controller
         // Add correlated subquery for unread_count per conversation for current user and last inbound sent_at
         $query->select('conversations.*')
             ->selectSub(function ($sub) {
+                $sub->from('conversation_assignments as current_assignment')
+                    ->whereColumn('current_assignment.conversation_id', 'conversations.id')
+                    ->whereColumn('current_assignment.assigned_user_id', 'conversations.assigned_user_id')
+                    ->whereNull('current_assignment.unassigned_at')
+                    ->orderByDesc('current_assignment.assigned_at')
+                    ->orderByDesc('current_assignment.id')
+                    ->select('current_assignment.assigned_at')
+                    ->limit(1);
+            }, 'current_assignment_at')
+            ->selectSub(function ($sub) {
+                $sub->from('messages')
+                    ->whereColumn('messages.conversation_id', 'conversations.id')
+                    ->where('messages.sender_type', MessageSenderType::AGENT->value)
+                    ->where('messages.sent_at', '>=', function ($assignment) {
+                        $assignment->from('conversation_assignments as current_assignment')
+                            ->whereColumn('current_assignment.conversation_id', 'conversations.id')
+                            ->whereColumn('current_assignment.assigned_user_id', 'conversations.assigned_user_id')
+                            ->whereNull('current_assignment.unassigned_at')
+                            ->orderByDesc('current_assignment.assigned_at')
+                            ->orderByDesc('current_assignment.id')
+                            ->select('current_assignment.assigned_at')
+                            ->limit(1);
+                    })
+                    ->orderBy('messages.sent_at')
+                    ->orderBy('messages.id')
+                    ->select('messages.sent_at')
+                    ->limit(1);
+            }, 'first_agent_response_at')
+            ->selectSub(function ($sub) {
                 $sub->from('messages')
                     ->whereColumn('messages.conversation_id', 'conversations.id')
                     ->where('messages.direction', MessageDirection::INBOUND->value)
@@ -258,7 +287,7 @@ class ConversationController extends Controller
         $conversation->load([
             'channel',
             'contact',
-            'team:id,name',
+            'team:id,name,queue_wait_target_seconds,first_response_target_seconds',
             'assignedUser:id,name,email',
             'assignments.assignedUser:id,name',
             'assignments.assignedByUser:id,name',
@@ -561,7 +590,7 @@ class ConversationController extends Controller
         $channel = $conversation->channel ?? Channel::find($conversation->channel_id);
         $channelType = is_object($channel?->type) ? $channel->type->value : $channel?->type;
 
-        // Validar conversaciones cerradas: Webchat/Telegram/canales sin ventana Meta siempre bloqueados.
+        // Webchat, Telegram y otros canales sin ventana Meta permiten enviar seguimientos en conversaciones cerradas.
         // En canales Meta (WhatsApp, Messenger, Instagram), un agente autorizado puede responder solo si la ventana sigue abierta.
         if ($conversation->status === ConversationStatus::CLOSED) {
             if ($channelType === ChannelType::WHATSAPP->value) {
@@ -585,11 +614,6 @@ class ConversationController extends Controller
                         'error_code' => 'INSTAGRAM_24H_WINDOW_EXPIRED',
                     ], 422);
                 }
-            } else {
-                return response()->json([
-                    'message' => 'La conversación está cerrada y no admite nuevos mensajes.',
-                    'code' => 'conversation_closed',
-                ], 422);
             }
         }
 

@@ -14,6 +14,7 @@ use App\Models\WebchatSession;
 use App\Services\Presence\AgentAvailabilityService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\DB;
 
 class RealtimeAnalyticsService
 {
@@ -84,6 +85,7 @@ class RealtimeAnalyticsService
         $avgQueueWaitSeconds = $this->calculateAvgQueueWaitSeconds($channelId);
         $avgFirstResponseSeconds = $this->calculateAvgFirstResponseSeconds($channelId);
         $avgResolutionSeconds = $this->calculateAvgResolutionSeconds($channelId);
+        $serviceTargetAlerts = $this->calculateServiceTargetAlerts($channelId, $now);
 
         // 6. Agent conversations status
         $ongoingConversations = Conversation::query()
@@ -123,6 +125,7 @@ class RealtimeAnalyticsService
                 'avg_resolution_seconds' => $avgResolutionSeconds,
                 'avg_resolution_formatted' => $this->formatSeconds($avgResolutionSeconds),
             ],
+            'service_target_alerts' => $serviceTargetAlerts,
             'agent_conversations' => [
                 'ongoing' => $ongoingConversations,
                 'closed_today' => $closedTodayConversations,
@@ -131,6 +134,83 @@ class RealtimeAnalyticsService
             'channels_summary' => $channelsSummary,
             'updated_at' => $now->toIso8601String(),
         ];
+    }
+
+    /**
+     * Count active conversations nearing or exceeding their team's live response targets.
+     * The warning threshold is reached after 80% of the target has elapsed.
+     *
+     * @return array<string, array{tracked: int, on_time: int, at_risk: int, overdue: int}>
+     */
+    protected function calculateServiceTargetAlerts(?string $channelId, Carbon $now): array
+    {
+        $defaultQueueTarget = (int) config('teams.service_targets.queue_wait_seconds', 120);
+        $defaultFirstResponseTarget = (int) config('teams.service_targets.first_response_seconds', 300);
+
+        $waiting = DB::table('conversations')
+            ->leftJoin('teams', 'teams.id', '=', 'conversations.team_id')
+            ->where('conversations.is_simulation', false)
+            ->where('conversations.status', ConversationStatus::WAITING_AGENT->value)
+            ->whereNull('conversations.assigned_user_id')
+            ->whereNotNull('conversations.queued_at')
+            ->when($channelId, fn ($query) => $query->where('conversations.channel_id', $channelId))
+            ->select('conversations.queued_at as started_at')
+            ->selectRaw('COALESCE(teams.queue_wait_target_seconds, ?) as target_seconds', [$defaultQueueTarget])
+            ->get();
+
+        $awaitingFirstResponse = DB::table('conversation_assignments as current_assignment')
+            ->join('conversations', 'conversations.id', '=', 'current_assignment.conversation_id')
+            ->leftJoin('teams', 'teams.id', '=', 'conversations.team_id')
+            ->where('conversations.is_simulation', false)
+            ->where('conversations.status', ConversationStatus::ASSIGNED->value)
+            ->whereNotNull('conversations.assigned_user_id')
+            ->whereColumn('current_assignment.assigned_user_id', 'conversations.assigned_user_id')
+            ->whereNull('current_assignment.unassigned_at')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw('1')
+                    ->from('messages')
+                    ->whereColumn('messages.conversation_id', 'conversations.id')
+                    ->where('messages.sender_type', MessageSenderType::AGENT->value)
+                    ->whereColumn('messages.sent_at', '>=', 'current_assignment.assigned_at');
+            })
+            ->when($channelId, fn ($query) => $query->where('conversations.channel_id', $channelId))
+            ->select('current_assignment.assigned_at as started_at')
+            ->selectRaw('COALESCE(teams.first_response_target_seconds, ?) as target_seconds', [$defaultFirstResponseTarget])
+            ->get();
+
+        return [
+            'queue' => $this->summarizeLiveTargets($waiting, $now),
+            'first_response' => $this->summarizeLiveTargets($awaitingFirstResponse, $now),
+        ];
+    }
+
+    /**
+     * @param iterable<object{started_at: mixed, target_seconds: mixed}> $items
+     * @return array{tracked: int, on_time: int, at_risk: int, overdue: int}
+     */
+    protected function summarizeLiveTargets(iterable $items, Carbon $now): array
+    {
+        $summary = ['tracked' => 0, 'on_time' => 0, 'at_risk' => 0, 'overdue' => 0];
+
+        foreach ($items as $item) {
+            if (! $item->started_at) {
+                continue;
+            }
+
+            $target = max(1, (int) $item->target_seconds);
+            $elapsed = max(0, (int) Carbon::parse($item->started_at)->diffInSeconds($now, false));
+            $summary['tracked']++;
+
+            if ($elapsed >= $target) {
+                $summary['overdue']++;
+            } elseif ($elapsed >= (int) ceil($target * 0.8)) {
+                $summary['at_risk']++;
+            } else {
+                $summary['on_time']++;
+            }
+        }
+
+        return $summary;
     }
 
     /**

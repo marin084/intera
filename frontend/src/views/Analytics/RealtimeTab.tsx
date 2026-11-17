@@ -437,13 +437,16 @@ export const RealtimeTab: React.FC<RealtimeTabProps> = ({ onOpenConversation: _o
                   </span>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Objetivo SLA (menor a 2 min):</span>
-                    <span style={{ fontWeight: 600, color: data.operating_times.avg_queue_wait_seconds <= 120 ? '#5d8f82' : '#ea580c' }}>
-                      {data.operating_times.avg_queue_wait_seconds <= 120 ? 'En Rango' : 'Superado'}
-                    </span>
-                  </div>
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem', display: 'grid', gap: '0.45rem', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Estado de las metas de cola por equipo</span>
+                  {(data.service_target_alerts?.queue.tracked ?? 0) === 0 ? (
+                    <span style={{ color: 'var(--text-muted)' }}>No hay conversaciones esperando asignación.</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <span className="badge badge-warning">Por vencer: {data.service_target_alerts?.queue.at_risk ?? 0}</span>
+                      <span className="badge badge-danger">Vencidas: {data.service_target_alerts?.queue.overdue ?? 0}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -463,11 +466,16 @@ export const RealtimeTab: React.FC<RealtimeTabProps> = ({ onOpenConversation: _o
                   </span>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Velocidad operativa:</span>
-                    <span style={{ fontWeight: 600, color: '#5d8f82' }}>Óptima</span>
-                  </div>
+                <div style={{ borderTop: '1px solid var(--border)', marginTop: '1rem', paddingTop: '0.75rem', display: 'grid', gap: '0.45rem', fontSize: '0.8rem' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Primera respuesta pendiente · metas por equipo</span>
+                  {(data.service_target_alerts?.first_response.tracked ?? 0) === 0 ? (
+                    <span style={{ color: 'var(--text-muted)' }}>No hay conversaciones asignadas pendientes de respuesta inicial.</span>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                      <span className="badge badge-warning">Por vencer: {data.service_target_alerts?.first_response.at_risk ?? 0}</span>
+                      <span className="badge badge-danger">Vencidas: {data.service_target_alerts?.first_response.overdue ?? 0}</span>
+                    </div>
+                  )}
                 </div>
               </div>
 
