@@ -134,11 +134,20 @@ class RbacTest extends TestCase
         $response->assertStatus(200);
     }
 
-    public function test_supervisor_cannot_view_or_manage_channels(): void
+    public function test_supervisor_can_view_assigned_channel_summary_but_cannot_manage_channels(): void
     {
+        $channel = \App\Models\Channel::create([
+            'name' => 'Canal visible de supervisor',
+            'type' => \App\Enums\ChannelType::WEBCHAT,
+            'is_active' => true,
+        ]);
+        $this->grantChannelAccess($channel, $this->supervisorUser);
+
         $this->actingAs($this->supervisorUser, 'sanctum')
             ->getJson('/api/v1/channels')
-            ->assertStatus(403);
+            ->assertOk()
+            ->assertJsonPath('data.0.id', $channel->id)
+            ->assertJsonMissingPath('data.0.configuration');
 
         $this->actingAs($this->supervisorUser, 'sanctum')
             ->postJson('/api/v1/channels', [

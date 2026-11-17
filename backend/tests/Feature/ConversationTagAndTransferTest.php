@@ -16,6 +16,7 @@ use App\Models\ConversationAssignment;
 use App\Models\Message;
 use App\Models\Role;
 use App\Models\Tag;
+use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -41,6 +42,8 @@ class ConversationTagAndTransferTest extends TestCase
     protected Contact $contact;
 
     protected Conversation $conversation;
+
+    protected Team $team;
 
     protected function setUp(): void
     {
@@ -92,6 +95,8 @@ class ConversationTagAndTransferTest extends TestCase
                 'access_token' => 'meta-token',
             ],
         ]);
+        $this->grantChannelAccess($this->channel, $this->agentA, $this->agentB, $this->inactiveAgent);
+        $this->team = $this->addToDefaultTeam($this->agentA, $this->agentB, $this->inactiveAgent);
 
         $this->contact = Contact::create([
             'display_name' => 'Roberto Gómez',
@@ -102,6 +107,7 @@ class ConversationTagAndTransferTest extends TestCase
 
         $this->conversation = Conversation::create([
             'channel_id' => $this->channel->id,
+            'team_id' => $this->team->id,
             'contact_id' => $this->contact->id,
             'status' => ConversationStatus::ASSIGNED,
             'assigned_user_id' => $this->agentA->id,

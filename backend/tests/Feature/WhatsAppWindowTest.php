@@ -88,6 +88,9 @@ class WhatsAppWindowTest extends TestCase
             'is_active' => true,
             'configuration' => [],
         ]);
+        $this->grantChannelAccess($this->whatsappChannel, $this->agent, $this->supervisor);
+        $this->grantChannelAccess($this->webchatChannel, $this->agent, $this->supervisor);
+        $this->addToDefaultTeam($this->agent, $this->supervisor);
 
         $this->contact = Contact::create([
             'display_name' => 'Marcos Lima',
@@ -746,6 +749,8 @@ class WhatsAppWindowTest extends TestCase
             'is_active' => true,
         ]);
         $supervisor->roles()->attach($supervisorRole);
+        $this->grantChannelAccess($this->whatsappChannel, $earlierAgent, $supervisor);
+        $this->addToDefaultTeam($earlierAgent, $supervisor);
 
         $conversation = Conversation::create([
             'channel_id' => $this->whatsappChannel->id,
@@ -900,6 +905,8 @@ class WhatsAppWindowTest extends TestCase
             'last_seen_at' => now(),
         ]);
         $agentB->roles()->attach($agentRole);
+        $this->grantChannelAccess($this->whatsappChannel, $agentB);
+        $this->addToDefaultTeam($agentB);
 
         // Set up Flow with START -> TRANSFER_TO_AGENT
         $flow = Flow::create([
