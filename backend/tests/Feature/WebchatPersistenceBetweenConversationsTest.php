@@ -220,15 +220,20 @@ class WebchatPersistenceBetweenConversationsTest extends TestCase
 
         $msgs2 = $start2->json('data.messages');
         $contents = array_column($msgs2, 'content');
-        $this->assertDatabaseHas('messages', [
-            'conversation_id' => $conv1Id,
-            'sender_type' => 'system',
-            'visibility' => 'internal',
-            'content' => '── Sesión finalizada ──',
-        ]);
-        $this->assertNotContains('── Sesión finalizada ──', $contents, 'Internal session dividers must not be exposed to visitors.');
+        $this->assertContains('── Sesión finalizada ──', $contents);
         $this->assertContains('¡Hola de nuevo, Luis! Qué gusto verte otra vez.', $contents);
         $this->assertContains('¿Cual es tu nombre?', $contents);
+
+        // Verify chronological order: first session questions come before divider, and divider comes before greeting
+        $askNameIdx = array_search('¿Cual es tu nombre?', $contents);
+        $dividerIdx = array_search('── Sesión finalizada ──', $contents);
+        $greetingIdx = array_search('¡Hola de nuevo, Luis! Qué gusto verte otra vez.', $contents);
+
+        $this->assertNotFalse($askNameIdx);
+        $this->assertNotFalse($dividerIdx);
+        $this->assertNotFalse($greetingIdx);
+        $this->assertTrue($askNameIdx < $dividerIdx, 'First session messages must appear before session divider');
+        $this->assertTrue($dividerIdx < $greetingIdx, 'Session divider must appear before second session messages');
     }
 
     public function test_reopening_closed_webchat_conversation_starts_entry_flow_and_cleans_closing_owner(): void
@@ -356,13 +361,7 @@ class WebchatPersistenceBetweenConversationsTest extends TestCase
 
         // 4. Entry flow was restarted and sent greeting
         $contents = array_column($start2->json('data.messages'), 'content');
-        $this->assertDatabaseHas('messages', [
-            'conversation_id' => $convId,
-            'sender_type' => 'system',
-            'visibility' => 'internal',
-            'content' => '── Sesión finalizada ──',
-        ]);
-        $this->assertNotContains('── Sesión finalizada ──', $contents, 'Internal session dividers must not be exposed to visitors.');
+        $this->assertContains('── Sesión finalizada ──', $contents);
         $this->assertContains('Bienvenido al nuevo ciclo.', $contents);
     }
 

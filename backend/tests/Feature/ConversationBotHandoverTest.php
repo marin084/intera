@@ -119,7 +119,6 @@ class ConversationBotHandoverTest extends TestCase
                 'access_token' => 'handover-token',
             ],
         ]);
-        $this->grantChannelAccess($this->channel, $this->agent, $this->supervisor);
 
         $this->contact = Contact::create([
             'first_name' => 'Carlos',
@@ -256,7 +255,6 @@ class ConversationBotHandoverTest extends TestCase
             'is_active' => true,
         ]);
         $otherAgent->roles()->attach(Role::where('name', 'agent')->first());
-        $this->grantChannelAccess($this->channel, $otherAgent);
 
         $this->conversation->update([
             'assigned_user_id' => $this->agent->id,

@@ -18,7 +18,6 @@ use App\Models\FlowExecution;
 use App\Models\FlowVersion;
 use App\Models\Message;
 use App\Models\Role;
-use App\Models\Team;
 use App\Models\User;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -43,8 +42,6 @@ class InboxOperabilityTest extends TestCase
     protected Channel $channel;
 
     protected Contact $contact;
-
-    protected Team $team;
 
     protected function setUp(): void
     {
@@ -96,8 +93,6 @@ class InboxOperabilityTest extends TestCase
             'type' => ChannelType::WEBCHAT,
             'is_active' => true,
         ]);
-        $this->grantChannelAccess($this->channel, $this->supervisor, $this->agentA, $this->agentB, $this->flowManager);
-        $this->team = $this->addToDefaultTeam($this->supervisor, $this->agentA, $this->agentB);
 
         $this->contact = Contact::create([
             'display_name' => 'Cliente Prueba',
@@ -187,7 +182,6 @@ class InboxOperabilityTest extends TestCase
 
         $conv = Conversation::create([
             'channel_id' => $this->channel->id,
-            'team_id' => $this->team->id,
             'contact_id' => $this->contact->id,
             'status' => ConversationStatus::WAITING_AGENT,
             'assigned_user_id' => null,
@@ -230,7 +224,6 @@ class InboxOperabilityTest extends TestCase
 
         $conv = Conversation::create([
             'channel_id' => $this->channel->id,
-            'team_id' => $this->team->id,
             'contact_id' => $this->contact->id,
             'status' => ConversationStatus::WAITING_AGENT,
             'assigned_user_id' => null,

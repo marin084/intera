@@ -486,7 +486,6 @@ class SecurityAuditTest extends TestCase
             'type' => ChannelType::WHATSAPP,
             'is_active' => true,
             'configuration' => [
-                'app_id' => '123456789012345',
                 'phone_number_id' => '1029384756',
                 'business_account_id' => '5647382910',
                 'access_token' => $realToken,
@@ -501,7 +500,6 @@ class SecurityAuditTest extends TestCase
             ->putJson("/api/v1/channels/{$channel->id}", [
                 'name' => 'Updated WhatsApp Name',
                 'configuration' => [
-                    'app_id' => '123456789012345',
                     'phone_number_id' => '1029384756',
                     'business_account_id' => '5647382910',
                     'access_token' => '************',

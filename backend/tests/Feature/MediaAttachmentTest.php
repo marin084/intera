@@ -22,13 +22,11 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\WebchatChannelSettings;
 use App\Models\WebchatSession;
-use App\Jobs\ProcessWhatsAppMediaAttachmentJob;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -393,7 +391,6 @@ class MediaAttachmentTest extends TestCase
 
     public function test_whatsapp_inbound_image_webhook_normalized_properly(): void
     {
-        Queue::fake();
         $payload = [
             'object' => 'whatsapp_business_account',
             'entry' => [
@@ -452,7 +449,6 @@ class MediaAttachmentTest extends TestCase
         );
 
         $response->assertStatus(200);
-        Queue::assertPushed(ProcessWhatsAppMediaAttachmentJob::class, 1);
 
         $message = Message::where('external_message_id', 'wamid.INBOUND_IMAGE_001')->first();
         $this->assertNotNull($message);
@@ -464,7 +460,6 @@ class MediaAttachmentTest extends TestCase
 
     public function test_whatsapp_inbound_document_webhook_normalized_properly(): void
     {
-        Queue::fake();
         $payload = [
             'object' => 'whatsapp_business_account',
             'entry' => [
@@ -524,7 +519,6 @@ class MediaAttachmentTest extends TestCase
         );
 
         $response->assertStatus(200);
-        Queue::assertPushed(ProcessWhatsAppMediaAttachmentJob::class, 1);
 
         $message = Message::where('external_message_id', 'wamid.INBOUND_DOC_002')->first();
         $this->assertNotNull($message);

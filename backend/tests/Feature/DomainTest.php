@@ -129,15 +129,6 @@ class DomainTest extends TestCase
             'name' => 'Webchat Test',
             'type' => ChannelType::WEBCHAT,
         ]);
-        $agent = User::create([
-            'name' => 'Agente del Equipo General',
-            'email' => 'agent-domain@test.com',
-            'password' => Hash::make('TestSecuredPass@2026'),
-            'is_active' => true,
-        ]);
-        $agent->roles()->attach(Role::where('name', 'agent')->first());
-        $this->grantChannelAccess($channel, $agent);
-        $this->addToDefaultTeam($agent);
 
         $contact = Contact::create([
             'display_name' => 'María López',
@@ -150,10 +141,10 @@ class DomainTest extends TestCase
             'started_at' => now(),
         ]);
 
-        // The assigned agent must have access to both this channel and its queue team.
+        // Assign to adminUser
         $assignResponse = $this->actingAs($this->adminUser, 'sanctum')
             ->postJson("/api/v1/conversations/{$conversation->id}/assign", [
-                'assigned_user_id' => $agent->id,
+                'assigned_user_id' => $this->adminUser->id,
                 'reason' => 'Escalado por solicitud del cliente',
             ]);
 
@@ -161,13 +152,13 @@ class DomainTest extends TestCase
 
         $this->assertDatabaseHas('conversations', [
             'id' => $conversation->id,
-            'assigned_user_id' => $agent->id,
+            'assigned_user_id' => $this->adminUser->id,
             'status' => 'assigned',
         ]);
 
         $this->assertDatabaseHas('conversation_assignments', [
             'conversation_id' => $conversation->id,
-            'assigned_user_id' => $agent->id,
+            'assigned_user_id' => $this->adminUser->id,
             'assigned_by_user_id' => $this->adminUser->id,
             'reason' => 'Escalado por solicitud del cliente',
         ]);

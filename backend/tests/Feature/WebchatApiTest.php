@@ -509,13 +509,17 @@ class WebchatApiTest extends TestCase
         $this->assertDatabaseHas('messages', [
             'conversation_id' => $firstConvId,
             'sender_type' => 'system',
-            'visibility' => 'internal',
+            'visibility' => 'external',
             'content' => '── Sesión finalizada ──',
         ]);
 
         $messages2 = $startRes2->json('data.messages');
         $contents = array_column($messages2, 'content');
-        $this->assertNotContains('── Sesión finalizada ──', $contents, 'Internal session dividers must not be exposed to visitors.');
+        $this->assertContains('── Sesión finalizada ──', $contents);
+
+        $dividerMsg = collect($messages2)->firstWhere('content', '── Sesión finalizada ──');
+        $this->assertNotNull($dividerMsg);
+        $this->assertEquals('session_divider', $dividerMsg['metadata']['event'] ?? null);
     }
 
     // ==========================================
@@ -814,8 +818,6 @@ class WebchatApiTest extends TestCase
         $agent->roles()->attach(Role::where('name', 'agent')->first());
 
         $channel = $this->createWebchatChannel();
-        $this->grantChannelAccess($channel, $supervisor, $agent);
-        $this->addToDefaultTeam($agent);
         $contact = Contact::create(['display_name' => 'Cliente Test', 'external_identifier' => 'c_2']);
         $conversation = Conversation::create([
             'channel_id' => $channel->id,

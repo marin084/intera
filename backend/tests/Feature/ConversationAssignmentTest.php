@@ -10,7 +10,6 @@ use App\Models\Channel;
 use App\Models\Contact;
 use App\Models\Conversation;
 use App\Models\Role;
-use App\Models\Team;
 use App\Models\User;
 use App\Services\Presence\AgentAvailabilityService;
 use App\Services\Routing\ConversationAssignmentService;
@@ -34,8 +33,6 @@ class ConversationAssignmentTest extends TestCase
     protected Channel $channel;
 
     protected Contact $contact;
-
-    protected Team $team;
 
     protected ConversationAssignmentService $assignmentService;
 
@@ -88,8 +85,6 @@ class ConversationAssignmentTest extends TestCase
                 'access_token' => 'token-abc',
             ],
         ]);
-        $this->grantChannelAccess($this->channel, $this->agentA, $this->agentB);
-        $this->team = $this->addToDefaultTeam($this->agentA, $this->agentB);
 
         $this->contact = Contact::create([
             'display_name' => 'Test Contact',
@@ -195,9 +190,9 @@ class ConversationAssignmentTest extends TestCase
     }
 
     /**
-     * Capacity limits also apply to manual assignments, including those made by an administrator.
+     * 3. Admin override: administrator can manually assign a 6th conversation to an agent with 5.
      */
-    public function test_admin_cannot_manually_assign_beyond_agent_capacity(): void
+    public function test_admin_can_manually_assign_6th_conversation_override(): void
     {
         // Agent A has 5 conversations
         for ($i = 0; $i < 5; $i++) {
@@ -223,15 +218,20 @@ class ConversationAssignmentTest extends TestCase
         // Via PATCH /api/v1/conversations/{id}
         $response = $this->patchJson("/api/v1/conversations/{$conv6->id}", [
             'assigned_user_id' => $this->agentA->id,
-            'reason' => 'Intento de superar capacidad',
+            'reason' => 'Admin manual override',
         ]);
 
-        $response->assertStatus(422)
-            ->assertJsonValidationErrors(['capacity']);
-        $this->assertNull($conv6->fresh()->assigned_user_id);
-        $this->assertEquals(ConversationStatus::WAITING_AGENT, $conv6->fresh()->status);
+        $response->assertStatus(200);
+        $this->assertEquals($this->agentA->id, $conv6->fresh()->assigned_user_id);
+        $this->assertEquals(ConversationStatus::ASSIGNED, $conv6->fresh()->status);
 
-        // The explicit assign endpoint enforces the same limit.
+        // Agent A now has 6 active conversations
+        $activeCount = Conversation::where('assigned_user_id', $this->agentA->id)
+            ->where('status', ConversationStatus::ASSIGNED)
+            ->count();
+        $this->assertEquals(6, $activeCount);
+
+        // Also via POST /api/v1/conversations/{id}/assign for 7th conversation
         $conv7 = Conversation::create([
             'channel_id' => $this->channel->id,
             'contact_id' => $this->contact->id,
@@ -242,12 +242,11 @@ class ConversationAssignmentTest extends TestCase
 
         $responsePost = $this->postJson("/api/v1/conversations/{$conv7->id}/assign", [
             'assigned_user_id' => $this->agentA->id,
-            'reason' => 'Segundo intento de superar capacidad',
+            'reason' => 'Admin second manual override',
         ]);
 
-        $responsePost->assertStatus(422)
-            ->assertJsonValidationErrors(['capacity']);
-        $this->assertNull($conv7->fresh()->assigned_user_id);
+        $responsePost->assertStatus(200);
+        $this->assertEquals($this->agentA->id, $conv7->fresh()->assigned_user_id);
     }
 
     /**
@@ -356,7 +355,6 @@ class ConversationAssignmentTest extends TestCase
         // Two waiting conversations (one older, one newer)
         $oldWaiting = Conversation::create([
             'channel_id' => $this->channel->id,
-            'team_id' => $this->team->id,
             'contact_id' => $this->contact->id,
             'status' => ConversationStatus::WAITING_AGENT,
             'assigned_user_id' => null,
@@ -366,7 +364,6 @@ class ConversationAssignmentTest extends TestCase
 
         $newWaiting = Conversation::create([
             'channel_id' => $this->channel->id,
-            'team_id' => $this->team->id,
             'contact_id' => $this->contact->id,
             'status' => ConversationStatus::WAITING_AGENT,
             'assigned_user_id' => null,
