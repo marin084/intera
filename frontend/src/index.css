@@ -1562,6 +1562,10 @@ body {
   box-shadow: 0 22px 56px -32px rgb(38 60 56 / 0.36);
 }
 
+.login-mobile-brand {
+  display: none;
+}
+
 .login-form-heading {
   margin-bottom: 2rem;
 }
@@ -1638,63 +1642,40 @@ body {
   }
 
   .login-story {
-    min-height: auto;
-    padding: 1.5rem 1.35rem 1.75rem;
-  }
-
-  .login-story-inner {
-    min-height: auto;
-  }
-
-  .login-brand {
-    min-height: 34px;
-  }
-
-  .login-brand img {
-    width: 34px;
-    height: 34px;
-  }
-
-  .login-brand span[aria-hidden='true'] {
-    font-size: 1.1rem !important;
-  }
-
-  .login-story-copy {
-    margin: 1.5rem 0 0;
-    padding: 0;
-  }
-
-  .login-story-copy .login-eyebrow {
-    margin-bottom: 0.5rem;
-  }
-
-  .login-story-copy h1 {
-    max-width: 19ch;
-    font-size: clamp(1.8rem, 7vw, 2.5rem);
-    line-height: 1.1;
-  }
-
-  .login-story-description {
-    margin-top: 0.6rem;
-    font-size: 0.9rem;
-    line-height: 1.5;
-  }
-
-  .login-highlights,
-  .login-security-note {
     display: none;
   }
 
   .login-form-side {
-    align-items: flex-start;
-    padding: 1.25rem 1rem 2rem;
+    min-height: 100vh;
+    min-height: 100dvh;
+    align-items: center;
+    padding: 1.5rem 1rem;
+    background:
+      radial-gradient(ellipse at 15% 20%, rgb(169 200 187 / 0.38), transparent 35%),
+      radial-gradient(ellipse at 85% 80%, rgb(93 143 130 / 0.22), transparent 38%),
+      #edf3f0;
   }
 
   .login-card {
-    max-width: 520px;
+    max-width: 420px;
     margin: 0 auto;
-    padding: 1.5rem 1.25rem;
+    padding: 2rem 1.5rem;
     border-radius: 16px;
+  }
+
+  .login-mobile-brand {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.65rem;
+    margin-bottom: 1.75rem;
+    text-align: center;
+  }
+
+  .login-mobile-brand p {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 0.875rem;
   }
 
   .login-form-heading {

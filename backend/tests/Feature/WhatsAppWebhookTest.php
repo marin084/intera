@@ -21,6 +21,7 @@ use App\Models\Message;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AuditLogger;
+use App\Services\Runtime\ConversationIngressService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request as ClientRequest;
@@ -211,6 +212,39 @@ class WhatsAppWebhookTest extends TestCase
             'CONTENT_TYPE' => 'application/json',
             'HTTP_X_HUB_SIGNATURE_256' => $validSignature,
         ], $rawContent)->assertStatus(200);
+    }
+
+    public function test_post_webhook_requests_retry_when_inbound_processing_fails(): void
+    {
+        $ingress = \Mockery::mock(ConversationIngressService::class);
+        $ingress->shouldReceive('handleInbound')->once()->andThrow(new \RuntimeException('temporary database failure'));
+        app()->instance(ConversationIngressService::class, $ingress);
+
+        $payload = [
+            'object' => 'whatsapp_business_account',
+            'entry' => [[
+                'changes' => [[
+                    'value' => [
+                        'contacts' => [['profile' => ['name' => 'Cliente'], 'wa_id' => '5215512345678']],
+                        'messages' => [[
+                            'from' => '5215512345678',
+                            'id' => 'wamid.retry-test',
+                            'timestamp' => '1730000000',
+                            'type' => 'text',
+                            'text' => ['body' => 'Hola'],
+                        ]],
+                    ],
+                ]],
+            ]],
+        ];
+        $raw = (string) json_encode($payload);
+
+        $this->call('POST', "/api/v1/public/webhooks/whatsapp/{$this->whatsappChannel->id}", [], [], [], [
+            'CONTENT_TYPE' => 'application/json',
+            'HTTP_X_HUB_SIGNATURE_256' => $this->computeSignature($raw),
+        ], $raw)->assertStatus(500);
+
+        $this->assertDatabaseCount('messages', 0);
     }
 
     public function test_post_webhook_ignores_status_notifications_safely(): void
@@ -567,6 +601,7 @@ class WhatsAppWebhookTest extends TestCase
                 'is_active' => true,
                 'configuration' => [
                     'phone_number_id' => '123456789',
+                    'app_id' => '1234567890',
                     'business_account_id' => '987654321',
                     'access_token' => 'REAL_SECRET_TOKEN_XYZ',
                     'verify_token' => 'SECRET_VERIFY_TOKEN_123',
@@ -610,6 +645,7 @@ class WhatsAppWebhookTest extends TestCase
             'is_active' => true,
             'configuration' => [
                 'phone_number_id' => '111111',
+                'app_id' => '1234567890',
                 'access_token' => 'INITIAL_SECRET_ACCESS_TOKEN',
                 'verify_token' => 'INITIAL_VERIFY_TOKEN',
                 'app_secret' => 'INITIAL_APP_SECRET',

@@ -12,6 +12,7 @@ const RolesView = lazy(() => import('./views/RolesView').then((m) => ({ default:
 const ChannelsView = lazy(() => import('./views/ChannelsView').then((m) => ({ default: m.ChannelsView })));
 const FlowsView = lazy(() => import('./views/FlowsView').then((m) => ({ default: m.FlowsView })));
 const ConversationsView = lazy(() => import('./views/ConversationsView').then((m) => ({ default: m.ConversationsView })));
+const TeamsView = lazy(() => import('./views/TeamsView').then((m) => ({ default: m.TeamsView })));
 const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
 const AccountView = lazy(() => import('./views/AccountView').then((m) => ({ default: m.AccountView })));
 const AdminSettingsView = lazy(() => import('./views/AdminSettingsView').then((m) => ({ default: m.AdminSettingsView })));
@@ -105,6 +106,7 @@ function parseAnalyticsPath(pathname: string): { flowId?: string } | null {
 
 const TAB_PATHS: Record<string, string> = {
   conversations: '/conversations',
+  teams: '/teams',
   flows: '/flows',
   analytics: '/analytics',
   channels: '/channels',
@@ -198,6 +200,7 @@ const MainApp: React.FC = () => {
   const canAccessTab = (tab: string) => {
     if (tab === 'account') return true;
     if (tab === 'conversations') return hasPermission('conversations.view_assigned') || hasPermission('conversations.view_all');
+    if (tab === 'teams') return hasPermission('teams.manage');
     if (tab === 'flows') return hasPermission('flows.view');
     if (tab === 'analytics') return hasPermission('flows.view');
     if (tab === 'channels') return hasPermission('channels.view') || hasPermission('channels.manage');
@@ -298,6 +301,8 @@ const MainApp: React.FC = () => {
     switch (activeTab) {
       case 'conversations':
         return <ConversationsView />;
+      case 'teams':
+        return <TeamsView />;
       case 'flows':
         return <FlowsView onOpenEditor={handleOpenEditor} onViewAnalytics={handleOpenAnalytics} />;
       case 'analytics':

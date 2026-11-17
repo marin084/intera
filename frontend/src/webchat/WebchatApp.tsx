@@ -657,10 +657,10 @@ export const WebchatApp: React.FC<WebchatAppProps> = ({ initialChannelKey }) => 
     };
   }, [session, conversation?.id, resyncMessages]);
 
-  // If Reverb is unavailable, keep the visitor's transcript synchronized via
-  // the normal API and recover immediately when the tab becomes visible again.
+  // Reconcile against the API even while connected, in case a broadcast was
+  // missed despite an apparently healthy WebSocket connection.
   useEffect(() => {
-    if (!session?.visitor_token || !conversation?.id || realtimeConnected) return;
+    if (!session?.visitor_token || !conversation?.id) return;
 
     let syncing = false;
     const sync = async () => {
@@ -676,7 +676,7 @@ export const WebchatApp: React.FC<WebchatAppProps> = ({ initialChannelKey }) => 
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void sync();
     };
-    const interval = window.setInterval(() => void sync(), 5000);
+    const interval = window.setInterval(() => void sync(), realtimeConnected ? 30000 : 5000);
     window.addEventListener('focus', sync);
     document.addEventListener('visibilitychange', onVisibilityChange);
 

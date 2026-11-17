@@ -44,6 +44,10 @@ class RolePermissionSeeder extends Seeder
             // Agents Overview
             ['name' => 'agents.view', 'display_name' => 'Ver agentes operativos', 'module' => 'agents'],
 
+            // Teams and routing queues
+            ['name' => 'teams.view', 'display_name' => 'Ver equipos y colas propias', 'module' => 'teams'],
+            ['name' => 'teams.manage', 'display_name' => 'Administrar equipos y rutas', 'module' => 'teams'],
+
             // Audit & System
             ['name' => 'audit_logs.view', 'display_name' => 'Consultar logs de auditoría', 'module' => 'audit'],
             ['name' => 'instance.configure', 'display_name' => 'Configurar parámetros de la instancia', 'module' => 'system'],
@@ -110,6 +114,7 @@ class RolePermissionSeeder extends Seeder
             'conversations.reply',
             'conversations.assign',
             'agents.view',
+            'teams.view',
             'canned_responses.view',
             'canned_responses.manage',
         ])->get();
@@ -120,6 +125,7 @@ class RolePermissionSeeder extends Seeder
             'conversations.view_assigned',
             'conversations.reply',
             'canned_responses.view',
+            'teams.view',
         ])->get();
         $agent->permissions()->sync($agentPermissions);
     }

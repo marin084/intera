@@ -24,15 +24,21 @@ async function getReverbAppKey(): Promise<string> {
       credentials: 'same-origin',
     })
       .then(async (response) => {
-        if (response.ok) {
-          const payload = await response.json();
-          if (typeof payload?.data?.app_key === 'string' && payload.data.app_key.trim()) {
-            return payload.data.app_key.trim();
-          }
+        if (!response.ok) {
+          throw new Error('Realtime configuration unavailable');
         }
-        return import.meta.env.VITE_REVERB_APP_KEY || 'intera_key';
+
+        const payload = await response.json();
+        if (typeof payload?.data?.app_key !== 'string' || !payload.data.app_key.trim()) {
+          throw new Error('Realtime app key missing');
+        }
+
+        return payload.data.app_key.trim();
       })
-      .catch(() => import.meta.env.VITE_REVERB_APP_KEY || 'intera_key');
+      .catch((error) => {
+        appKeyPromise = null;
+        throw error;
+      });
   }
 
   return appKeyPromise;

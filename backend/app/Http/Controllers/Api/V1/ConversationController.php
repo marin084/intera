@@ -60,6 +60,7 @@ class ConversationController extends Controller
                 'channel:id,name,type',
                 'contact:id,display_name,email,phone,country,external_identifier',
                 'assignedUser:id,name,email',
+                'team:id,name',
                 'assignments.assignedUser:id,name',
                 'tags:id,name,color,slug',
             ]);
@@ -75,6 +76,16 @@ class ConversationController extends Controller
             if ($status === 'assigned') {
                 $query->where('assigned_user_id', $user->id)
                     ->where('status', ConversationStatus::ASSIGNED);
+            } elseif (($scope === 'queue' || $status === ConversationStatus::WAITING_AGENT->value) && $user->hasPermission('teams.view')) {
+                $teamIds = $user->teams()->where('teams.is_active', true)->select('teams.id');
+                $query->where('status', ConversationStatus::WAITING_AGENT)
+                    ->whereNull('assigned_user_id')
+                    ->whereIn('team_id', $teamIds);
+                if ($request->filled('team_id')) {
+                    $teamId = (string) $request->query('team_id');
+                    if (Str::isUuid($teamId) && $user->belongsToTeam($teamId)) $query->where('team_id', $teamId);
+                    else $query->whereRaw('1 = 0');
+                }
             } elseif ($status === 'closed') {
                 $query->where('status', ConversationStatus::CLOSED)
                     ->where(function ($q) use ($user) {
@@ -97,6 +108,11 @@ class ConversationController extends Controller
             // Supervisor / Admin visibility
             if ($scope === 'queue') {
                 $query->where('status', ConversationStatus::WAITING_AGENT)->whereNull('assigned_user_id');
+                if ($request->filled('team_id')) {
+                    $teamId = (string) $request->query('team_id');
+                    if (Str::isUuid($teamId)) $query->where('team_id', $teamId);
+                    else $query->whereRaw('1 = 0');
+                }
             } elseif ($scope === 'mine') {
                 $query->where('assigned_user_id', $user->id);
             } elseif ($status && $status !== 'all') {
@@ -242,6 +258,7 @@ class ConversationController extends Controller
         $conversation->load([
             'channel',
             'contact',
+            'team:id,name',
             'assignedUser:id,name,email',
             'assignments.assignedUser:id,name',
             'assignments.assignedByUser:id,name',
@@ -925,12 +942,31 @@ class ConversationController extends Controller
 
         $targetUser = User::findOrFail($validated['target_user_id']);
 
+        if (! $targetUser->canAccessChannel((string) $conversation->channel_id)) {
+            return response()->json(['message' => 'La persona seleccionada no tiene acceso al canal de esta conversación.'], 422);
+        }
+        if (! $conversation->team_id || ! $targetUser->belongsToTeam((string) $conversation->team_id)) {
+            return response()->json(['message' => 'La persona seleccionada no pertenece al equipo de esta conversación.'], 422);
+        }
+
         DB::transaction(function () use ($conversation, $targetUser, $user, $validated) {
             /** @var Conversation $locked */
             $locked = Conversation::where('id', $conversation->id)->lockForUpdate()->firstOrFail();
 
             if ($locked->status === ConversationStatus::CLOSED) {
                 abort(422, 'No se puede transferir una conversación que ya está cerrada.');
+            }
+
+            $lockedTarget = User::query()->whereKey($targetUser->id)->lockForUpdate()->firstOrFail();
+            if (! $lockedTarget->is_active
+                || ! $lockedTarget->canAccessChannel((string) $locked->channel_id)
+                || ! $locked->team_id
+                || ! $lockedTarget->belongsToTeam((string) $locked->team_id)) {
+                abort(422, 'La persona seleccionada no está habilitada para este equipo y canal.');
+            }
+            if ((int) $locked->assigned_user_id !== (int) $lockedTarget->id
+                && ! app(ConversationAssignmentService::class)->canAcceptMoreConversations($lockedTarget, (string) $locked->id)) {
+                abort(422, 'La persona seleccionada ya alcanzó su capacidad de conversaciones activas.');
             }
 
             // Close active assignments
@@ -951,7 +987,9 @@ class ConversationController extends Controller
             $locked->update([
                 'assigned_user_id' => $targetUser->id,
                 'status' => ConversationStatus::ASSIGNED,
+                'queued_at' => null,
             ]);
+            app(\App\Services\Routing\ConversationQueueService::class)->leave($locked->id, 'assigned', (int) $targetUser->id);
 
             // Internal transfer note if provided
             $noteText = trim((string) ($validated['note'] ?? ''));
@@ -1100,6 +1138,13 @@ class ConversationController extends Controller
             return true;
         }
 
+        if ($conversation->status === ConversationStatus::WAITING_AGENT
+            && $user->hasPermission('teams.view')
+            && $conversation->team_id
+            && $user->belongsToTeam((string) $conversation->team_id)) {
+            return true;
+        }
+
         if ($conversation->status === ConversationStatus::CLOSED && $user->hasPermission('conversations.reply')) {
             return $conversation->closing_assigned_user_id === (int) $user->id;
         }
@@ -1155,7 +1200,7 @@ class ConversationController extends Controller
         if ($isSupervisor) {
             $all = (clone $baseQuery)->where('status', '!=', ConversationStatus::CLOSED)->count();
             $bot = (clone $baseQuery)->where('status', ConversationStatus::BOT)->count();
-            $waiting = (clone $baseQuery)->where('status', ConversationStatus::WAITING_AGENT)->count();
+            $waiting = (clone $baseQuery)->where('status', ConversationStatus::WAITING_AGENT)->whereNull('assigned_user_id')->count();
             $assigned = (clone $baseQuery)->where('status', ConversationStatus::ASSIGNED)->count();
             $closed = (clone $baseQuery)->where('status', ConversationStatus::CLOSED)->count();
         } else {
@@ -1174,7 +1219,12 @@ class ConversationController extends Controller
                         });
                 })
                 ->count();
-            $waiting = 0;
+            $waiting = $user->hasPermission('teams.view')
+                ? (clone $baseQuery)->where('status', ConversationStatus::WAITING_AGENT)
+                    ->whereNull('assigned_user_id')
+                    ->whereIn('team_id', $user->teams()->where('teams.is_active', true)->select('teams.id'))
+                    ->count()
+                : 0;
             $bot = 0;
             $all = $assigned;
         }

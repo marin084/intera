@@ -12,6 +12,8 @@ use App\Models\Conversation;
 use App\Models\ConversationAssignment;
 use App\Models\FlowExecution;
 use App\Models\User;
+use App\Services\Routing\ConversationAssignmentService;
+use App\Services\Routing\ConversationQueueService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
@@ -36,10 +38,23 @@ class ConversationLifecycleService
                 );
             }
 
+            if (! $user->canAccessChannel((string) $locked->channel_id)
+                || ! $locked->team_id
+                || ! $user->belongsToTeam((string) $locked->team_id)) {
+                throw new AccessDeniedHttpException('No perteneces al equipo o no tienes acceso al canal de esta conversación.');
+            }
+
+            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            if (! app(ConversationAssignmentService::class)->canAcceptMoreConversations($lockedUser)) {
+                throw ValidationException::withMessages(['capacity' => 'Llegaste al máximo de conversaciones activas para tu rol.']);
+            }
+
             $locked->update([
                 'assigned_user_id' => $user->id,
                 'status' => ConversationStatus::ASSIGNED,
+                'queued_at' => null,
             ]);
+            app(ConversationQueueService::class)->leave($locked->id, 'assigned', (int) $user->id);
 
             ConversationAssignment::create([
                 'conversation_id' => $locked->id,
@@ -94,6 +109,32 @@ class ConversationLifecycleService
             $previousAssignedUserId = $locked->assigned_user_id;
             $isReassignment = $previousAssignedUserId !== null && $assignedUser !== null && $previousAssignedUserId !== $assignedUser->id;
 
+            if ($assignedUser) {
+                $team = $locked->team_id ? \App\Models\Team::find($locked->team_id) : null;
+                $team ??= app(ConversationQueueService::class)->teamForChannel((string) $locked->channel_id);
+                if ((string) $locked->team_id !== (string) $team->id) {
+                    $locked->team_id = $team->id;
+                    $locked->save();
+                }
+
+                $lockedAssignedUser = User::query()->whereKey($assignedUser->id)->lockForUpdate()->firstOrFail();
+                if (! $lockedAssignedUser->is_active
+                    || ! $lockedAssignedUser->canAccessChannel((string) $locked->channel_id)
+                    || ! $lockedAssignedUser->belongsToTeam((string) $team->id)) {
+                    throw ValidationException::withMessages(['assigned_user_id' => 'La persona seleccionada no pertenece al equipo o no tiene acceso al canal.']);
+                }
+                if ((int) $previousAssignedUserId !== (int) $assignedUser->id
+                    && ! app(ConversationAssignmentService::class)->canAcceptMoreConversations($lockedAssignedUser, (string) $locked->id)) {
+                    throw ValidationException::withMessages(['capacity' => 'La persona seleccionada ya alcanzó su capacidad de conversaciones activas.']);
+                }
+            }
+
+            // Measure human wait from the handoff, not from the bot conversation start.
+            if ($currentStatus !== ConversationStatus::WAITING_AGENT && $assignedUser && $locked->assigned_user_id === null) {
+                $locked->update(['status' => ConversationStatus::WAITING_AGENT]);
+                $locked = app(ConversationQueueService::class)->enter($locked) ?? $locked;
+            }
+
             // Close existing active assignment
             ConversationAssignment::where('conversation_id', $locked->id)
                 ->whereNull('unassigned_at')
@@ -111,12 +152,15 @@ class ConversationLifecycleService
                 $locked->update([
                     'assigned_user_id' => $assignedUser->id,
                     'status' => ConversationStatus::ASSIGNED,
+                    'queued_at' => null,
                 ]);
+                app(ConversationQueueService::class)->leave($locked->id, 'assigned', (int) $assignedUser->id);
             } else {
                 $locked->update([
                     'assigned_user_id' => null,
                     'status' => ConversationStatus::WAITING_AGENT,
                 ]);
+                app(ConversationQueueService::class)->enter($locked);
             }
 
             $fresh = $locked->fresh(['assignedUser', 'channel', 'contact', 'assignments']);
@@ -180,6 +224,7 @@ class ConversationLifecycleService
                 ConversationAssignment::where('conversation_id', $locked->id)
                     ->whereNull('unassigned_at')
                     ->update(['unassigned_at' => now()]);
+                app(ConversationQueueService::class)->leave($locked->id, 'closed');
 
                 return $locked->fresh(['assignedUser', 'channel', 'contact', 'assignments']);
             }
@@ -223,8 +268,10 @@ class ConversationLifecycleService
                 'status' => ConversationStatus::CLOSED,
                 'closed_at' => $now,
                 'assigned_user_id' => null,
+                'queued_at' => null,
                 'metadata' => $metadata,
             ]);
+            app(ConversationQueueService::class)->leave($locked->id, 'closed');
 
             app(ConversationSessionDividerService::class)
                 ->ensureClosedSessionDivider($locked, 'agent_close', $now);

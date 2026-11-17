@@ -9,6 +9,19 @@ export interface User {
   permissions?: string[];
   channel_access_scope?: 'all' | 'selected' | 'assigned' | 'none';
   accessible_channels?: { id: string; name: string; type: string; is_active: boolean }[];
+  team_ids?: string[];
+}
+
+export interface Team {
+  id: string;
+  name: string;
+  description: string | null;
+  is_default: boolean;
+  is_active: boolean;
+  members: Pick<User, 'id' | 'name' | 'email'>[];
+  channels: Pick<Channel, 'id' | 'name' | 'type' | 'is_active'>[];
+  waiting_count: number;
+  average_wait_seconds: number;
 }
 
 export interface Role {
@@ -363,6 +376,8 @@ export interface Conversation {
   id: string;
   channel_id: string;
   contact_id: string;
+  team_id?: string | null;
+  queued_at?: string | null;
   status: 'bot' | 'waiting_agent' | 'assigned' | 'closed';
   bot_enabled?: boolean;
   whatsapp_window?: WhatsAppWindow;
@@ -374,6 +389,7 @@ export interface Conversation {
   last_message_at: string | null;
   closed_at: string | null;
   channel?: { id: string; name: string; type: string };
+  team?: { id: string; name: string } | null;
   contact?: Contact;
   assigned_user?: { id: number; name: string; email: string };
   messages?: Message[];

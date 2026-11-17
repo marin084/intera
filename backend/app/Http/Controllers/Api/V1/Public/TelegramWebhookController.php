@@ -61,7 +61,7 @@ class TelegramWebhookController extends Controller
         $lockKey = "lock_webhook_tg_update_{$channel->id}_{$updateId}";
         $lock = Cache::lock($lockKey, 15);
         if (! $lock->get()) {
-            return response()->json(['ok' => true, 'description' => 'Update in processing'], 200);
+            return response()->json(['ok' => false, 'description' => 'Update still processing'], 503);
         }
 
         try {

@@ -24,6 +24,8 @@ class Conversation extends Model
     protected $fillable = [
         'channel_id',
         'contact_id',
+        'team_id',
+        'queued_at',
         'status',
         'assigned_user_id',
         'active_flow_id',
@@ -45,6 +47,7 @@ class Conversation extends Model
             'started_at' => 'datetime',
             'last_message_at' => 'datetime',
             'closed_at' => 'datetime',
+            'queued_at' => 'datetime',
             'metadata' => 'array',
         ];
     }
@@ -54,6 +57,16 @@ class Conversation extends Model
         return $this->belongsToMany(Tag::class, 'conversation_tag')
             ->withPivot('assigned_by')
             ->withTimestamps();
+    }
+
+    public function team(): BelongsTo
+    {
+        return $this->belongsTo(Team::class);
+    }
+
+    public function queueEntries(): HasMany
+    {
+        return $this->hasMany(ConversationQueueEntry::class);
     }
 
     public function addTag(string $tag, ?int $assignedBy = null): array

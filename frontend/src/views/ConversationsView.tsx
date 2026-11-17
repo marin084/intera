@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { api } from '../services/api';
 import { createEcho } from '../services/echo';
-import type { Conversation, FlowExecution, User, Message, Contact, InternalNote, CannedResponse, Tag } from '../types';
+import type { Conversation, FlowExecution, User, Message, Contact, InternalNote, CannedResponse, Tag, Team } from '../types';
 import {
   MessageSquare,
   Send,
@@ -102,6 +102,15 @@ function extractInteractiveOptions(msg: Message): InteractiveOption[] {
     .filter((opt): opt is InteractiveOption => opt !== null);
 }
 
+function formatQueueDuration(queuedAt: string | null | undefined, nowMs: number): string {
+  if (!queuedAt) return '—';
+  const seconds = Math.max(0, Math.floor((nowMs - new Date(queuedAt).getTime()) / 1000));
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
+}
+
 export const ConversationsView: React.FC = () => {
   const { showToast } = useToast();
   const { hasPermission, user } = useAuth();
@@ -117,6 +126,7 @@ export const ConversationsView: React.FC = () => {
         selectedAgentFilter?: string;
         selectedChannelFilter?: string;
         selectedTagFilter?: string;
+        selectedTeamFilter?: string;
         currentPage?: number;
       } : {};
     } catch {
@@ -146,6 +156,9 @@ export const ConversationsView: React.FC = () => {
     return true;
   });
   const [activeTab, setActiveTab] = useState<string>(inboxPreferences.activeTab || 'all');
+  const canSeeTeamQueues = hasPermission('teams.view');
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [selectedTeamFilter, setSelectedTeamFilter] = useState<string>(inboxPreferences.selectedTeamFilter || 'all');
   const [loading, setLoading] = useState(true);
   const [replyText, setReplyText] = useState('');
   const [sending, setSending] = useState(false);
@@ -247,6 +260,7 @@ export const ConversationsView: React.FC = () => {
   const activeTabRef = useRef(activeTab);
   const selectedAgentFilterRef = useRef(selectedAgentFilter);
   const selectedChannelFilterRef = useRef(selectedChannelFilter);
+  const selectedTeamFilterRef = useRef(selectedTeamFilter);
   const debouncedSearchRef = useRef(debouncedSearch);
   const currentPageRef = useRef(currentPage);
   const requestSeqRef = useRef(0);
@@ -308,10 +322,11 @@ export const ConversationsView: React.FC = () => {
     activeTabRef.current = activeTab;
     selectedAgentFilterRef.current = selectedAgentFilter;
     selectedChannelFilterRef.current = selectedChannelFilter;
+    selectedTeamFilterRef.current = selectedTeamFilter;
     selectedTagFilterRef.current = selectedTagFilter;
     debouncedSearchRef.current = debouncedSearch;
     isSupervisorOrAdminRef.current = isSupervisorOrAdmin;
-  }, [activeTab, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, debouncedSearch, isSupervisorOrAdmin]);
+  }, [activeTab, selectedAgentFilter, selectedChannelFilter, selectedTeamFilter, selectedTagFilter, debouncedSearch, isSupervisorOrAdmin]);
 
   useEffect(() => {
     try {
@@ -321,17 +336,36 @@ export const ConversationsView: React.FC = () => {
         selectedAgentFilter,
         selectedChannelFilter,
         selectedTagFilter,
+        selectedTeamFilter,
         currentPage,
       }));
     } catch {
       // Keep the inbox usable when browser storage is unavailable.
     }
-  }, [user?.id, activeTab, searchQuery, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, currentPage]);
+  }, [user?.id, activeTab, searchQuery, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, selectedTeamFilter, currentPage]);
+
+  useEffect(() => {
+    if (!canSeeTeamQueues) return;
+    let mounted = true;
+    api.getTeams().then((response) => {
+      if (mounted) {
+        setTeams(response.data);
+        const teamFilter = selectedTeamFilterRef.current;
+        if (teamFilter !== 'all' && !response.data.some((team) => team.id === teamFilter)) {
+          setSelectedTeamFilter('all');
+        }
+      }
+    }).catch((error) => console.error(error));
+    return () => { mounted = false; };
+  }, [canSeeTeamQueues]);
 
   const matchesCurrentFilters = React.useCallback((conv: Partial<Conversation>) => {
     const tab = activeTabRef.current;
     if (tab === 'all' && conv.status === 'closed') return false;
     if (tab !== 'all' && conv.status !== tab) return false;
+
+    const teamFilter = selectedTeamFilterRef.current;
+    if (tab === 'waiting_agent' && teamFilter !== 'all' && String(conv.team_id) !== teamFilter) return false;
 
     const agentFilter = selectedAgentFilterRef.current;
     if (agentFilter === 'unassigned' && conv.assigned_user_id) return false;
@@ -373,12 +407,18 @@ export const ConversationsView: React.FC = () => {
           tag_id?: string;
           search?: string;
           page?: number;
+          scope?: string;
+          team_id?: string;
         } = {
           page: targetPage,
         };
 
         if (activeTab && activeTab !== 'all') {
           params.status = activeTab;
+        }
+        if (activeTab === 'waiting_agent') {
+          params.scope = 'queue';
+          if (selectedTeamFilter !== 'all') params.team_id = selectedTeamFilter;
         }
         if (selectedAgentFilter && selectedAgentFilter !== 'all') {
           params.assigned_user_id = selectedAgentFilter;
@@ -419,7 +459,7 @@ export const ConversationsView: React.FC = () => {
         }
       }
     },
-    [activeTab, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, debouncedSearch]
+    [activeTab, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, selectedTeamFilter, debouncedSearch]
   );
   const fetchConversationsRef = useRef(fetchConversations);
   fetchConversationsRef.current = fetchConversations;
@@ -956,10 +996,16 @@ export const ConversationsView: React.FC = () => {
       tag_id?: string;
       search?: string;
       page?: number;
+      scope?: string;
+      team_id?: string;
     } = { page: initialPage };
 
     if (activeTab && activeTab !== 'all') {
       params.status = activeTab;
+    }
+    if (activeTab === 'waiting_agent') {
+      params.scope = 'queue';
+      if (selectedTeamFilter !== 'all') params.team_id = selectedTeamFilter;
     }
     if (selectedAgentFilter && selectedAgentFilter !== 'all') {
       params.assigned_user_id = selectedAgentFilter;
@@ -1003,7 +1049,7 @@ export const ConversationsView: React.FC = () => {
     return () => {
       isMounted = false;
     };
-  }, [activeTab, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, debouncedSearch]);
+  }, [activeTab, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, selectedTeamFilter, debouncedSearch]);
 
   const goToPage = (page: number) => {
     if (page < 1 || page > lastPage || loading) return;
@@ -1579,11 +1625,9 @@ export const ConversationsView: React.FC = () => {
     };
   }, [user?.id, matchesCurrentFilters, triggerNewChatNotification, triggerWaitingQueueNotification, showToast]);
 
-  // Keep the inbox usable when the WebSocket is unavailable. This also
-  // reconciles messages missed during short network interruptions.
+  // Reconcile against the API even while connected: a healthy socket does not
+  // guarantee that every broadcast was received or that subscriptions succeeded.
   useEffect(() => {
-    if (realtimeStatus === 'connected') return;
-
     let syncing = false;
     const syncInbox = async () => {
       if (syncing || document.visibilityState === 'hidden') return;
@@ -1637,7 +1681,10 @@ export const ConversationsView: React.FC = () => {
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') void syncInbox();
     };
-    const interval = window.setInterval(() => void syncInbox(), 8000);
+    const interval = window.setInterval(
+      () => void syncInbox(),
+      realtimeStatus === 'connected' ? 30000 : 8000
+    );
     window.addEventListener('focus', syncInbox);
     document.addEventListener('visibilitychange', onVisibilityChange);
 
@@ -2091,6 +2138,7 @@ export const ConversationsView: React.FC = () => {
       ]
     : [
         { id: 'all', label: 'Todas' },
+        ...(canSeeTeamQueues ? [{ id: 'waiting_agent', label: 'Cola de mi equipo' }] : []),
         { id: 'assigned', label: 'Asignadas' },
         { id: 'closed', label: 'Archivadas' },
       ];
@@ -2110,10 +2158,11 @@ export const ConversationsView: React.FC = () => {
     const list = conversations.filter((c) => {
       if (activeTab === 'all' && c.status === 'closed') return false;
       if (!isSupervisorOrAdmin) {
-        if (c.status === 'bot' || c.status === 'waiting_agent') return false;
+        if (c.status === 'bot') return false;
+        if (c.status === 'waiting_agent' && !(canSeeTeamQueues && activeTab === 'waiting_agent')) return false;
         if (c.status === 'closed') {
           if (c.closing_assigned_user_id !== user?.id) return false;
-        } else {
+        } else if (c.status !== 'waiting_agent') {
           if (c.assigned_user_id !== user?.id) return false;
         }
       }
@@ -2479,6 +2528,20 @@ export const ConversationsView: React.FC = () => {
                   ))}
                 </select>
 
+                {activeTab === 'waiting_agent' && teams.length > 1 && (
+                  <select
+                    data-testid="team-queue-filter"
+                    className="form-select"
+                    aria-label="Filtrar por equipo"
+                    style={{ fontSize: '0.75rem', height: '28px', padding: '1px 6px', flex: 1, minWidth: '100px' }}
+                    value={selectedTeamFilter}
+                    onChange={(e) => setSelectedTeamFilter(e.target.value)}
+                  >
+                    <option value="all">Todos mis equipos</option>
+                    {teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}
+                  </select>
+                )}
+
                 {isSupervisorOrAdmin && (
                   <select
                     data-testid="agent-filter-select"
@@ -2700,6 +2763,13 @@ export const ConversationsView: React.FC = () => {
                           <span>{conv.last_message_at ? new Date(conv.last_message_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}</span>
                         </div>
                       </div>
+
+                      {isWaiting && (
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', marginTop: '0.4rem', color: '#8a5a14', fontSize: '0.72rem' }}>
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}><Clock size={12} /> En espera {formatQueueDuration(conv.queued_at, currentNow)}</span>
+                          {conv.team?.name && <span style={{ color: '#61726d' }}>{conv.team.name}</span>}
+                        </div>
+                      )}
 
                       {Boolean(conv.tags && conv.tags.length > 0) && (
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.25rem', marginTop: '0.35rem' }}>

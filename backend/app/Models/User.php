@@ -74,6 +74,20 @@ class User extends Authenticatable
         return $this->belongsToMany(Channel::class, 'channel_user');
     }
 
+    public function teams(): BelongsToMany
+    {
+        return $this->belongsToMany(Team::class, 'team_user')->withTimestamps();
+    }
+
+    public function belongsToTeam(string $teamId): bool
+    {
+        if ($this->relationLoaded('teams')) {
+            return $this->teams->contains(fn (Team $team) => (string) $team->id === $teamId);
+        }
+
+        return $this->teams()->where('teams.id', $teamId)->exists();
+    }
+
     public function canAccessChannel(string $channelId): bool
     {
         if ($this->hasRole('super_admin')) {

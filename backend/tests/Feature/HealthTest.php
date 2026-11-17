@@ -31,4 +31,19 @@ class HealthTest extends TestCase
                 ],
             ]);
     }
+
+    public function test_realtime_config_never_exposes_the_app_encryption_key(): void
+    {
+        $appKey = 'base64:'.base64_encode(str_repeat('x', 32));
+        config()->set('app.key', $appKey);
+        config()->set('reverb.apps.apps.0.key', $appKey.'reverb_public_key');
+
+        $this->getJson('/api/v1/public/realtime/config')
+            ->assertStatus(503)
+            ->assertDontSee($appKey);
+
+        $this->getJson('/health/realtime')
+            ->assertStatus(503)
+            ->assertJsonPath('status', 'invalid_config');
+    }
 }

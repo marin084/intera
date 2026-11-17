@@ -8,6 +8,7 @@ use App\Enums\MessageSenderType;
 use App\Models\Channel;
 use App\Models\Conversation;
 use App\Models\ConversationAssignment;
+use App\Models\ConversationQueueEntry;
 use App\Models\Message;
 use App\Models\WebchatSession;
 use App\Services\Presence\AgentAvailabilityService;
@@ -162,39 +163,40 @@ class RealtimeAnalyticsService
     }
 
     /**
-     * Calculate average queue wait time in seconds (for assignments made today or conversations waiting in queue).
+     * Calculate human queue wait in seconds from handoff to assignment (or now for active waits).
      */
     protected function calculateAvgQueueWaitSeconds(?string $channelId = null): int
     {
         $today = now()->startOfDay();
         $waitTimes = [];
 
-        // Assignments made today
-        $assignments = ConversationAssignment::query()
-            ->join('conversations', 'conversation_assignments.conversation_id', '=', 'conversations.id')
-            ->when($channelId, fn (Builder $q) => $q->where('conversations.channel_id', $channelId))
-            ->where('conversation_assignments.assigned_at', '>=', $today)
-            ->selectRaw('conversation_assignments.assigned_at, conversations.started_at, conversations.created_at')
-            ->get();
+        $assignments = ConversationQueueEntry::query()
+            ->whereNotNull('assigned_at')
+            ->where('assigned_at', '>=', $today)
+            ->where('exit_reason', 'assigned')
+            ->when($channelId, fn (Builder $q) => $q->whereHas('conversation', fn ($conversation) => $conversation->where('channel_id', $channelId)))
+            ->get(['entered_at', 'assigned_at']);
 
-        foreach ($assignments as $row) {
-            $start = Carbon::parse($row->started_at ?? $row->created_at);
-            $assigned = Carbon::parse($row->assigned_at);
-            $diff = abs((int) $assigned->diffInSeconds($start));
+        foreach ($assignments as $entry) {
+            $start = Carbon::parse($entry->entered_at);
+            $assigned = Carbon::parse($entry->assigned_at);
+            $diff = max(0, (int) $start->diffInSeconds($assigned, false));
             if ($diff <= 86400 * 2) {
                 $waitTimes[] = $diff;
             }
         }
 
-        // Active waiting_agent conversations
-        $currentlyWaiting = Conversation::query()
-            ->when($channelId, fn (Builder $q) => $q->where('channel_id', $channelId))
-            ->where('status', ConversationStatus::WAITING_AGENT->value)
-            ->get(['started_at', 'created_at']);
+        // Active waiting conversations count from the most recent queue entry.
+        $currentlyWaiting = ConversationQueueEntry::query()
+            ->whereNull('ended_at')
+            ->whereHas('conversation', fn (Builder $q) => $q
+                ->where('status', ConversationStatus::WAITING_AGENT->value)
+                ->whereNull('assigned_user_id')
+                ->when($channelId, fn (Builder $channelQuery) => $channelQuery->where('channel_id', $channelId)))
+            ->get(['entered_at']);
 
-        foreach ($currentlyWaiting as $row) {
-            $start = Carbon::parse($row->started_at ?? $row->created_at);
-            $diff = abs((int) now()->diffInSeconds($start));
+        foreach ($currentlyWaiting as $entry) {
+            $diff = max(0, (int) Carbon::parse($entry->entered_at)->diffInSeconds(now(), false));
             if ($diff <= 86400 * 2) {
                 $waitTimes[] = $diff;
             }

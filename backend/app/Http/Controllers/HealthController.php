@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\RealtimeConfiguration;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redis;
@@ -78,6 +79,10 @@ class HealthController extends Controller
 
     protected function checkRealtimeReverb(): array
     {
+        if (RealtimeConfiguration::hasUnsafeAppKey()) {
+            return ['status' => 'invalid_config', 'details' => 'Unsafe Reverb app key'];
+        }
+
         if (app()->environment() === 'testing') {
             return ['status' => 'ok', 'details' => 'testing_environment'];
         }

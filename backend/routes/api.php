@@ -20,6 +20,7 @@ use App\Http\Controllers\Api\V1\Public\WhatsAppWebhookController;
 use App\Http\Controllers\Api\V1\RoleController;
 use App\Http\Controllers\Api\V1\SavedFunnelController;
 use App\Http\Controllers\Api\V1\TagController;
+use App\Http\Controllers\Api\V1\TeamController;
 use App\Http\Controllers\Api\V1\UserController;
 use App\Http\Controllers\HealthController;
 use App\Http\Middleware\EnsureUserIsActive;
@@ -45,9 +46,14 @@ Route::prefix('v1')->group(function () {
     // Public Auth
     Route::post('/auth/login', [AuthController::class, 'login']);
 
-    // The Reverb app key is public by design. Serve the backend's configured
-    // value at runtime so the browser always connects with the same key.
+    // The Reverb app key is public by design. Never publish a configuration
+    // that includes Laravel's private encryption key.
     Route::get('/public/realtime/config', static function () {
+        if (\App\Support\RealtimeConfiguration::hasUnsafeAppKey()) {
+            return response()->json(['message' => 'Realtime configuration unavailable.'], 503)
+                ->header('Cache-Control', 'no-store');
+        }
+
         return response()->json([
             'data' => [
                 'app_key' => config('reverb.apps.apps.0.key'),
@@ -118,6 +124,11 @@ Route::prefix('v1')->group(function () {
         Route::patch('/users/{user}/status', [UserController::class, 'updateStatus'])->middleware('permission:users.manage');
         Route::put('/users/{user}/channels', [UserController::class, 'updateChannels'])->middleware('permission:users.manage');
         Route::put('/users/{user}/roles', [UserController::class, 'updateRoles'])->middleware('permission:roles.manage,users.manage');
+
+        // Teams and routing queues
+        Route::get('/teams', [TeamController::class, 'index'])->middleware('permission:teams.view,teams.manage');
+        Route::post('/teams', [TeamController::class, 'store'])->middleware('permission:teams.manage');
+        Route::put('/teams/{team}', [TeamController::class, 'update'])->middleware('permission:teams.manage');
 
         // Roles & Permissions
         Route::get('/roles', [RoleController::class, 'index'])->middleware('permission:roles.view,roles.manage');

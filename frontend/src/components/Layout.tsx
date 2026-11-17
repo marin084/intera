@@ -8,6 +8,7 @@ import {
   BarChart3,
   Radio,
   Users,
+  UsersRound,
   Shield,
   FileText,
   LogOut,
@@ -118,6 +119,12 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       label: 'Flujos Conversacionales',
       icon: GitBranch,
       visible: hasPermission('flows.view'),
+    },
+    {
+      id: 'teams',
+      label: 'Equipos',
+      icon: UsersRound,
+      visible: hasPermission('teams.manage'),
     },
     {
       id: 'analytics',

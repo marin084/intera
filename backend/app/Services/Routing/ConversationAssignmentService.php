@@ -39,9 +39,11 @@ class ConversationAssignmentService
             return collect();
         }
 
-        $onlineAgents->loadMissing(['roles', 'channels:id']);
+        $teamId = (string) ($conversation->team_id ?: app(ConversationQueueService::class)->teamForChannel((string) $conversation->channel_id)->id);
+        $onlineAgents->loadMissing(['roles', 'channels:id', 'teams:id']);
         $onlineAgents = $onlineAgents->filter(
             fn (User $agent) => $agent->canAccessChannel((string) $conversation->channel_id)
+                && $agent->belongsToTeam($teamId)
         )->values();
 
         // 2. Calculate active assigned conversations per agent
@@ -88,21 +90,29 @@ class ConversationAssignmentService
 
     public function autoAssign(Conversation $conversation, string $strategy = 'random'): ?User
     {
+        $conversation = app(ConversationQueueService::class)->enter($conversation) ?? $conversation;
         $candidates = $this->getEligibleCandidates($conversation, $strategy);
 
         if ($candidates->isEmpty()) {
             $this->markAsWaiting($conversation);
+            $waiting = $conversation->fresh(['team', 'channel', 'contact', 'assignedUser']);
+            if ($waiting) {
+                DB::afterCommit(function () use ($waiting) {
+                    broadcast(new ConversationUpdated($waiting));
+                    broadcast(new ConversationStatusChanged($waiting));
+                });
+            }
 
             return null;
         }
 
-        /** @var User $selectedAgent */
-        $selectedAgent = $candidates->count() === 1
-            ? $candidates->first()
-            : $candidates->random();
+        $candidates = $candidates->shuffle();
+        foreach ($candidates as $selectedAgent) {
+            $assigned = $this->assignToAgent($conversation, $selectedAgent, 'Auto Assignment');
+            if ($assigned) return $assigned;
+        }
 
-        // 5. Assignment
-        return $this->assignToAgent($conversation, $selectedAgent, 'Auto Assignment');
+        return null;
     }
 
     /**
@@ -110,13 +120,20 @@ class ConversationAssignmentService
      */
     public function assignWaitingOnQuotaFreed(?User $freedAgent = null): ?Conversation
     {
-        $waitingConversation = Conversation::where('is_simulation', false)
+        $waitingQuery = Conversation::where('is_simulation', false)
             ->where('status', ConversationStatus::WAITING_AGENT)
             ->whereNull('assigned_user_id')
-            ->orderBy('created_at', 'asc')
-            ->first();
+            ->orderByRaw('COALESCE(queued_at, created_at) asc');
 
-        if (! $waitingConversation) {
+        if ($freedAgent) {
+            $freedAgent->loadMissing('teams:id');
+            $teamIds = $freedAgent->teams->pluck('id')->all();
+            $waitingQuery->whereIn('team_id', $teamIds);
+        }
+
+        $waitingConversations = $waitingQuery->limit(100)->get();
+
+        if ($waitingConversations->isEmpty()) {
             return null;
         }
 
@@ -126,26 +143,25 @@ class ConversationAssignmentService
                 ->contains('id', $freedAgent->id);
 
             if ($isOnline) {
-                $freedAgent->loadMissing('roles');
-                $activeCount = Conversation::where('is_simulation', false)
-                    ->where('status', ConversationStatus::ASSIGNED)
-                    ->where('assigned_user_id', $freedAgent->id)
-                    ->count();
-
-                $maxCapacity = $freedAgent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
-
-                if ($maxCapacity > 0 && $activeCount < $maxCapacity) {
-                    $this->assignToAgent($waitingConversation, $freedAgent, 'Freed-quota auto-assignment');
-
-                    return $waitingConversation;
+                foreach ($waitingConversations as $waitingConversation) {
+                    if (! $freedAgent->canAccessChannel((string) $waitingConversation->channel_id)
+                        || ! $freedAgent->belongsToTeam((string) $waitingConversation->team_id)) {
+                        continue;
+                    }
+                    if ($this->assignToAgent($waitingConversation, $freedAgent, 'Freed-quota auto-assignment')) {
+                        return $waitingConversation->fresh();
+                    }
                 }
             }
         }
 
-        // Fallback: run general auto-assignment for the waiting conversation
-        $this->autoAssign($waitingConversation);
+        foreach ($waitingConversations as $waitingConversation) {
+            if ($this->autoAssign($waitingConversation)) {
+                return $waitingConversation->fresh();
+            }
+        }
 
-        return $waitingConversation;
+        return null;
     }
 
     /**
@@ -153,22 +169,45 @@ class ConversationAssignmentService
      */
     protected function markAsWaiting(Conversation $conversation): void
     {
-        if ($conversation->status !== ConversationStatus::WAITING_AGENT || $conversation->assigned_user_id !== null) {
-            $conversation->update([
-                'status' => ConversationStatus::WAITING_AGENT,
-                'assigned_user_id' => null,
-            ]);
-        }
+        app(ConversationQueueService::class)->enter($conversation);
+    }
+
+    public function canAcceptMoreConversations(User $agent, ?string $excludeConversationId = null): bool
+    {
+        $agent->loadMissing('roles');
+        $maxCapacity = $agent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
+        if ($maxCapacity <= 0) return false;
+
+        $activeCount = Conversation::query()
+            ->where('is_simulation', false)
+            ->where('status', ConversationStatus::ASSIGNED)
+            ->where('assigned_user_id', $agent->id)
+            ->when($excludeConversationId, fn ($query) => $query->where('id', '!=', $excludeConversationId))
+            ->count();
+
+        return $activeCount < $maxCapacity;
     }
 
     /**
      * Executes the assignment to a specific agent and dispatches real-time broadcast events.
      */
-    public function assignToAgent(Conversation $conversation, User $agent, string $reason = 'Auto-assigned'): User
+    public function assignToAgent(Conversation $conversation, User $agent, string $reason = 'Auto-assigned'): ?User
     {
         return DB::transaction(function () use ($conversation, $agent, $reason) {
             /** @var Conversation $locked */
             $locked = Conversation::where('id', $conversation->id)->lockForUpdate()->firstOrFail();
+
+            if ($locked->status !== ConversationStatus::WAITING_AGENT || $locked->assigned_user_id !== null) {
+                return null;
+            }
+
+            $lockedAgent = User::query()->whereKey($agent->id)->lockForUpdate()->first();
+            if (! $lockedAgent || ! $lockedAgent->is_active
+                || ! $lockedAgent->canAccessChannel((string) $locked->channel_id)
+                || ! $lockedAgent->belongsToTeam((string) $locked->team_id)
+                || ! $this->canAcceptMoreConversations($lockedAgent)) {
+                return null;
+            }
 
             $previousAssignedUserId = $locked->assigned_user_id;
 
@@ -189,7 +228,10 @@ class ConversationAssignmentService
             $locked->update([
                 'assigned_user_id' => $agent->id,
                 'status' => ConversationStatus::ASSIGNED,
+                'queued_at' => null,
             ]);
+
+            app(ConversationQueueService::class)->leave($locked->id, 'assigned', (int) $agent->id);
 
             $fresh = $locked->fresh(['assignedUser', 'channel', 'contact', 'assignments']);
 

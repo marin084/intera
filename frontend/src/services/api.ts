@@ -133,6 +133,24 @@ class ApiService {
     return this.request<{ data: any[] }>('/users');
   }
 
+  async getTeams() {
+    return this.request<{ data: import('../types').Team[] }>('/teams');
+  }
+
+  async createTeam(payload: { name: string; description?: string; member_ids: number[]; channel_ids: string[] }) {
+    return this.request<{ message: string; data: import('../types').Team }>('/teams', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateTeam(id: string, payload: { name?: string; description?: string; member_ids?: number[]; channel_ids?: string[] }) {
+    return this.request<{ message: string; data: import('../types').Team }>(`/teams/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  }
+
   async createUser(payload: any) {
     return this.request<{ message: string; data: any }>('/users', {
       method: 'POST',
@@ -666,10 +684,12 @@ class ApiService {
     assigned_user_id?: string | number | null;
     search?: string;
     page?: number;
+    team_id?: string;
   }) {
     const searchParams = new URLSearchParams();
     if (params?.status && params.status !== 'all') searchParams.set('status', params.status);
     if (params?.scope) searchParams.set('scope', params.scope);
+    if (params?.team_id) searchParams.set('team_id', params.team_id);
     if (params?.channel_id) searchParams.set('channel_id', params.channel_id);
     if (params?.tag_id && params.tag_id !== 'all') searchParams.set('tag_id', params.tag_id);
     if (params?.assigned_user_id !== undefined && params?.assigned_user_id !== null && params?.assigned_user_id !== 'all') {

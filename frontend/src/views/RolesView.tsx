@@ -12,12 +12,13 @@ const MODULE_LABELS: Record<string, string> = {
   conversations: 'Conversaciones',
   inbox: 'Bandeja y respuestas',
   agents: 'Equipo',
+  teams: 'Equipos',
   audit: 'Auditoría',
   system: 'Sistema',
   flows: 'Flujos conversacionales',
 };
 
-const MODULE_ORDER = ['users', 'roles', 'channels', 'conversations', 'inbox', 'agents', 'audit', 'system', 'flows'];
+const MODULE_ORDER = ['users', 'roles', 'teams', 'channels', 'conversations', 'inbox', 'agents', 'audit', 'system', 'flows'];
 
 type PermissionEntry = Pick<Permission, 'id' | 'name' | 'display_name' | 'module'>;
 

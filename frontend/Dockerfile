@@ -7,7 +7,6 @@ COPY package*.json ./
 RUN npm ci
 
 COPY . .
-ARG VITE_REVERB_APP_KEY=intera_key
 RUN npm run build
 
 # Stage 2: Serve with Nginx

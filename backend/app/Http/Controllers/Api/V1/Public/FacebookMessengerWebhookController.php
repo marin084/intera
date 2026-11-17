@@ -124,7 +124,7 @@ class FacebookMessengerWebhookController extends Controller
                 $lockKey = "lock_webhook_msgr_{$channel->id}_{$messageId}";
                 $lock = Cache::lock($lockKey, 15);
                 if (! $lock->get()) {
-                    continue;
+                    return response()->json(['message' => 'Evento todavía en proceso.'], 503);
                 }
 
                 try {

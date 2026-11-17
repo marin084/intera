@@ -95,6 +95,7 @@ class WhatsAppWebhookController extends Controller
         }
 
         $adapter = $this->adapterRegistry->forChannel($channel);
+        $processingFailed = false;
 
         foreach ($entries as $entry) {
             $changes = $entry['changes'] ?? [];
@@ -115,6 +116,7 @@ class WhatsAppWebhookController extends Controller
                         try {
                             $this->handleStatusUpdate($statusUpdate, $channel);
                         } catch (\Throwable $e) {
+                            $processingFailed = true;
                             $safeError = WhatsAppChannelAdapter::sanitizeErrorMessage($e->getMessage());
                             Log::error("[WhatsAppWebhookController] Error procesando status de WhatsApp: {$safeError}", [
                                 'status_id' => $statusUpdate['id'] ?? null,
@@ -182,6 +184,7 @@ class WhatsAppWebhookController extends Controller
                             broadcast(new ConversationUpdated($result['conversation']));
                         }
                     } catch (\Throwable $e) {
+                        $processingFailed = true;
                         $safeError = WhatsAppChannelAdapter::sanitizeErrorMessage($e->getMessage());
                         Log::error("[WhatsAppWebhookController] Error procesando mensaje de WhatsApp: {$safeError}", [
                             'external_message_id_hash' => $this->hashExternalMessageId($msg['id'] ?? null),
@@ -191,6 +194,12 @@ class WhatsAppWebhookController extends Controller
                     }
                 }
             }
+        }
+
+        if ($processingFailed) {
+            // Acknowledge only a fully processed batch. Successfully persisted messages
+            // are idempotent when Meta retries the same webhook after this response.
+            return response()->json(['status' => 'retry'], 500);
         }
 
         return response()->json(['status' => 'success'], 200);

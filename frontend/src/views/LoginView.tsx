@@ -53,6 +53,11 @@ export const LoginView: React.FC = () => {
 
       <section className="login-form-side" aria-labelledby="login-form-title">
         <div className="login-card">
+          <div className="login-mobile-brand">
+            <InteraLogo variant="dark" size={46} />
+            <p>Conversaciones que hacen equipo.</p>
+          </div>
+
           <div className="login-form-heading">
             <p className="login-eyebrow">BIENVENIDO DE NUEVO</p>
             <h2 id="login-form-title">Iniciar sesión</h2>
