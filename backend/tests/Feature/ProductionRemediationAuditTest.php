@@ -72,6 +72,7 @@ class ProductionRemediationAuditTest extends TestCase
             'type' => ChannelType::WHATSAPP,
             'is_active' => true,
             'configuration' => [
+                'app_id' => '123456789012345',
                 'phone_number_id' => '10987654321',
                 'business_account_id' => '9988776655',
                 'access_token' => 'SECRET_META_TOKEN_12345',
@@ -80,6 +81,7 @@ class ProductionRemediationAuditTest extends TestCase
                 'api_version' => 'v21.0',
             ],
         ]);
+        $this->grantChannelAccess($this->waChannel, $this->agentUser);
 
         $this->contact = Contact::create([
             'channel_id' => $this->waChannel->id,

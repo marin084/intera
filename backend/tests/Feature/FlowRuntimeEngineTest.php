@@ -672,6 +672,7 @@ class FlowRuntimeEngineTest extends TestCase
             'is_active' => true,
         ]);
         $supervisor->roles()->attach(Role::where('name', 'supervisor')->first());
+        $this->grantChannelAccess($channel, $supervisor);
 
         $response = $this->actingAs($supervisor, 'sanctum')->getJson("/api/v1/conversations/{$conversation->id}/execution");
         $response->assertOk();
@@ -821,6 +822,8 @@ class FlowRuntimeEngineTest extends TestCase
             'type' => ChannelType::WEBCHAT,
             'is_active' => true,
         ]);
+        $this->grantChannelAccess($channel, $agent);
+        $team = $this->addToDefaultTeam($agent);
 
         $contact = \App\Models\Contact::create([
             'display_name' => 'User Finishing Flow',
@@ -851,6 +854,7 @@ class FlowRuntimeEngineTest extends TestCase
         ]);
         $conversationWaiting = Conversation::create([
             'channel_id' => $channel->id,
+            'team_id' => $team->id,
             'contact_id' => $waitingContact->id,
             'status' => ConversationStatus::WAITING_AGENT,
             'assigned_user_id' => null,

@@ -101,6 +101,7 @@ return new class extends Migration
         Schema::dropIfExists('conversation_queue_entries');
         Schema::table('conversations', function (Blueprint $table) {
             $table->dropIndex('conversations_team_queue_idx');
+            $table->dropIndex('conversations_queued_at_index');
             $table->dropForeign(['team_id']);
             $table->dropColumn(['team_id', 'queued_at']);
         });

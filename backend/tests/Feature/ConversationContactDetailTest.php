@@ -59,6 +59,7 @@ class ConversationContactDetailTest extends TestCase
                 'access_token' => 'test-token',
             ],
         ]);
+        $this->grantChannelAccess($this->channel, $this->agent);
 
         $this->contact = Contact::create([
             'display_name' => 'Carlos Mendoza',
