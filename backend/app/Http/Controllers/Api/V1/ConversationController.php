@@ -35,6 +35,7 @@ use App\Services\Runtime\FlowResolver;
 use App\Services\Runtime\FlowRuntimeEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -256,6 +257,7 @@ class ConversationController extends Controller
 
         $hasMore = $items->count() > $limit;
         $messages = $items->take($limit)->reverse()->values();
+        $this->attachAgentNames($messages);
 
         $conversation->setRelation('messages', $messages);
 
@@ -409,6 +411,7 @@ class ConversationController extends Controller
         $items = $query->orderByDesc('sent_at')->orderByDesc('id')->limit($limit + 1)->get();
         $hasMore = $items->count() > $limit;
         $messages = $items->take($limit)->reverse()->values();
+        $this->attachAgentNames($messages);
 
         return response()->json([
             'data' => $messages,
@@ -1102,6 +1105,37 @@ class ConversationController extends Controller
         }
 
         return false;
+    }
+
+    private function attachAgentNames(Collection $messages): void
+    {
+        $agentIds = $messages
+            ->filter(function (Message $message) {
+                $senderType = $message->sender_type instanceof MessageSenderType
+                    ? $message->sender_type->value
+                    : $message->sender_type;
+
+                return $senderType === MessageSenderType::AGENT->value && $message->sender_id;
+            })
+            ->pluck('sender_id')
+            ->unique()
+            ->values();
+
+        if ($agentIds->isEmpty()) {
+            return;
+        }
+
+        $namesById = User::whereIn('id', $agentIds)->pluck('name', 'id');
+
+        foreach ($messages as $message) {
+            $senderType = $message->sender_type instanceof MessageSenderType
+                ? $message->sender_type->value
+                : $message->sender_type;
+
+            if ($senderType === MessageSenderType::AGENT->value) {
+                $message->setAttribute('sender_name', $namesById->get((int) $message->sender_id));
+            }
+        }
     }
 
     protected function calculateTabCounts(User $user, bool $isSupervisor, ?string $channelId = null): array

@@ -157,6 +157,10 @@ export const ConversationsView: React.FC = () => {
   const [hasMoreMessages, setHasMoreMessages] = useState(false);
   const [oldestMessageId, setOldestMessageId] = useState<string | null>(null);
   const [agents, setAgents] = useState<User[]>([]);
+  const agentsRef = useRef<User[]>(agents);
+  agentsRef.current = agents;
+  const currentUserRef = useRef(user);
+  currentUserRef.current = user;
   const [channels, setChannels] = useState<{ id: string; name: string }[]>([]);
   const [searchQuery, setSearchQuery] = useState(inboxPreferences.searchQuery || '');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -1652,11 +1656,16 @@ export const ConversationsView: React.FC = () => {
     const convChannel = echoRef.current.private(channelName);
 
     convChannel.listen('.MessageCreated', (event: any) => {
+      const eventSenderId = event.sender_id == null ? null : String(event.sender_id);
+      const senderName = eventSenderId && eventSenderId === String(currentUserRef.current?.id)
+        ? currentUserRef.current?.name
+        : agentsRef.current.find((agent) => String(agent.id) === eventSenderId)?.name;
       const newMsg: Message = {
         id: event.id,
         conversation_id: event.conversation_id,
         sender_type: event.sender_type,
         sender_id: event.sender_id,
+        sender_name: event.sender_name || senderName,
         direction: event.direction,
         message_type: event.message_type,
         content: event.content,
@@ -3618,6 +3627,10 @@ export const ConversationsView: React.FC = () => {
                       }
                       return counts;
                     }, {});
+                    const agentName = msg.sender_name
+                      || (msg.sender_id && String(msg.sender_id) === String(user?.id) ? user?.name : undefined)
+                      || agents.find((agent) => String(agent.id) === String(msg.sender_id))?.name
+                      || 'Agente';
 
                     return (
                       <React.Fragment key={msg.id}>
@@ -3641,7 +3654,7 @@ export const ConversationsView: React.FC = () => {
                         >
                           <div style={{ fontSize: '0.7rem', opacity: 0.85, marginBottom: '0.25rem', display: 'flex', justifyContent: 'space-between', gap: '1rem', alignItems: 'center' }}>
                             <span>
-                              {msg.sender_type === 'bot' ? '🤖 BOT' : msg.sender_type === 'agent' ? '👤 AGENTE' : 'VISITANTE'}
+                              {msg.sender_type === 'bot' ? '🤖 BOT' : msg.sender_type === 'agent' ? `👤 ${agentName}` : 'VISITANTE'}
                             </span>
                             <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                               <span>{new Date(msg.sent_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>

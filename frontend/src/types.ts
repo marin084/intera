@@ -311,6 +311,7 @@ export interface Message {
   conversation_id: string;
   sender_type: 'contact' | 'bot' | 'agent' | 'system';
   sender_id: string | null;
+  sender_name?: string | null;
   direction: 'inbound' | 'outbound';
   message_type: 'text' | 'system' | 'image' | 'file' | 'audio';
   visibility?: 'public' | 'internal';
