@@ -73,7 +73,7 @@ export const LoginView: React.FC = () => {
                 id="login-email"
                 type="email"
                 className="form-input"
-                placeholder="nombre@empresa.com"
+                placeholder="nombre@domino.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -93,11 +93,8 @@ export const LoginView: React.FC = () => {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={12}
                 autoComplete="current-password"
-                aria-describedby="login-password-hint"
               />
-              <span id="login-password-hint" className="login-field-hint">Mínimo 12 caracteres</span>
             </div>
 
             <button

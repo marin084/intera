@@ -1593,22 +1593,89 @@ body {
   display: flex;
   align-items: center;
   gap: 0.45rem;
+  line-height: 1;
 }
 
 .login-field-label svg {
+  display: block;
+  flex: 0 0 auto;
   color: var(--primary);
+  transform: translateY(1px);
+}
+
+.login-card form .form-group:has(> .login-field-label + .form-input) {
+  position: relative;
+}
+
+.login-card form .login-field-label {
+  display: flex;
+  align-items: center;
+  position: absolute;
+  z-index: 1;
+  top: 24px;
+  left: 14px;
+  margin: 0;
+  transform: translateY(-50%);
+  pointer-events: none;
+  transition: top 0.2s ease, transform 0.2s ease, font-size 0.2s ease, color 0.2s ease;
 }
 
 .login-card .form-input {
-  min-height: 48px;
+  min-height: 52px;
+  padding: 0.875rem;
   background: #fbfcfb;
+  background-image: linear-gradient(var(--primary), var(--primary));
+  background-repeat: no-repeat;
+  background-position: left bottom;
+  background-size: 0 2px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-size 0.25s ease;
 }
 
-.login-field-hint {
-  display: block;
-  margin-top: 0.35rem;
+.login-card .form-input::placeholder {
+  color: transparent;
+  transition: color 0.2s ease;
+}
+
+.login-card .form-input:focus,
+.login-card .form-input:focus-visible {
+  outline: none;
+  outline-offset: 0;
+  border-color: var(--border-strong, var(--border));
+  box-shadow: none;
+  background-size: 100% 2px;
+}
+
+.login-card form .form-group:has(> .login-field-label + .form-input:focus) > .form-input,
+.login-card form .form-group:has(> .login-field-label + .form-input:not(:placeholder-shown)) > .form-input {
+  padding-top: 1.35rem;
+  padding-bottom: 0.45rem;
+}
+
+.login-card .form-input:focus::placeholder {
   color: var(--text-subtle);
-  font-size: 0.75rem;
+}
+
+.login-card form .form-group:has(> .login-field-label + .form-input:focus) > .login-field-label,
+.login-card form .form-group:has(> .login-field-label + .form-input:not(:placeholder-shown)) > .login-field-label {
+  top: 0.4rem;
+  transform: none;
+  color: var(--primary);
+  font-size: 0.7rem;
+  line-height: 1.1;
+}
+
+.login-card form .form-group:has(> .login-field-label + .form-input:focus) > .login-field-label svg,
+.login-card form .form-group:has(> .login-field-label + .form-input:not(:placeholder-shown)) > .login-field-label svg {
+  width: 12px;
+  height: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .login-card form .login-field-label,
+  .login-card .form-input,
+  .login-card .form-input::placeholder {
+    transition: none;
+  }
 }
 
 .login-submit {
@@ -2536,10 +2603,6 @@ input[type='number'] {
 
 /* Contact 360 Detail Panel Responsive Off-Canvas Drawer (<= 1024px) */
 @media (max-width: 1024px) {
-  .inbox-thread-header--more-open {
-    z-index: 1402 !important;
-  }
-
   .contact-detail-panel {
     position: fixed !important;
     top: 0;
