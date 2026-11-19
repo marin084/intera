@@ -97,7 +97,9 @@ class TeamController extends Controller
     private function validateTeam(Request $request, ?Team $team): array
     {
         $validated = $request->validate([
-            'name' => [$team ? 'sometimes' : 'required', 'string', 'min:2', 'max:120', Rule::unique('teams', 'name')->ignore($team?->id)],
+            'name' => [$team ? 'sometimes' : 'required', 'string', 'min:2', 'max:120', Rule::unique('teams', 'name')
+                ->where(fn ($query) => $query->where('workspace_id', app('current_workspace_id')))
+                ->ignore($team?->id)],
             'description' => ['sometimes', 'nullable', 'string', 'max:1000'],
             'queue_wait_target_seconds' => ['sometimes', 'nullable', 'integer', 'min:60', 'max:86400'],
             'first_response_target_seconds' => ['sometimes', 'nullable', 'integer', 'min:60', 'max:86400'],
@@ -108,17 +110,41 @@ class TeamController extends Controller
         ]);
 
         if (array_key_exists('member_ids', $validated)) {
-            $invalid = User::query()->whereIn('id', $validated['member_ids'])
-                ->whereDoesntHave('roles', fn ($query) => $query->whereIn('name', ['agent', 'admin', 'supervisor', 'super_admin']))
+            $workspaceId = app('current_workspace_id');
+            $memberIds = $validated['member_ids'];
+            $invalidMembership = DB::table('users')
+                ->whereIn('users.id', $memberIds)
+                ->whereNotExists(function ($query) use ($workspaceId): void {
+                    $query->select(DB::raw(1))
+                        ->from('workspace_user')
+                        ->whereColumn('workspace_user.user_id', 'users.id')
+                        ->where('workspace_user.workspace_id', $workspaceId)
+                        ->where('workspace_user.is_active', true);
+                })
                 ->exists();
-            if ($invalid) {
+
+            $invalidRole = DB::table('workspace_user')
+                ->join('roles', 'roles.id', '=', 'workspace_user.role_id')
+                ->where('workspace_user.workspace_id', $workspaceId)
+                ->where('workspace_user.is_active', true)
+                ->whereIn('workspace_user.user_id', $memberIds)
+                ->whereNotIn('roles.name', ['agent', 'admin', 'supervisor', 'super_admin'])
+                ->exists();
+
+            if ($invalidMembership || $invalidRole) {
                 throw ValidationException::withMessages(['member_ids' => 'Solo se pueden agregar personas con un rol de atención o supervisión.']);
             }
         }
 
         if (array_key_exists('channel_ids', $validated)) {
+            $channelIds = $validated['channel_ids'];
+            $validChannelCount = Channel::query()->whereIn('channels.id', $channelIds)->count();
+            if ($validChannelCount !== count($channelIds)) {
+                throw ValidationException::withMessages(['channel_ids' => 'Uno o más canales pertenecen a un espacio de trabajo diferente.']);
+            }
+
             $conflict = DB::table('team_channels')
-                ->whereIn('channel_id', $validated['channel_ids'])
+                ->whereIn('channel_id', $channelIds)
                 ->when($team, fn ($query) => $query->where('team_id', '!=', $team->id))
                 ->exists();
             if ($conflict) {

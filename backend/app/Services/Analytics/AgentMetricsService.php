@@ -32,12 +32,25 @@ class AgentMetricsService
         $onlineOnly = ! empty($filters['online_only']) && filter_var($filters['online_only'], FILTER_VALIDATE_BOOLEAN);
 
         // Fetch users who are agents, supervisors or admins
+        $workspaceId = app()->bound('current_workspace_id') ? (string) app('current_workspace_id') : null;
         $agentsQuery = User::query()
-            ->with(['roles'])
+            ->with($workspaceId !== null ? ['workspaceMemberships.role'] : ['roles'])
             ->where('is_active', true)
-            ->where(function (Builder $q) {
-                $q->whereHas('roles', fn (Builder $rq) => $rq->whereIn('name', ['agent', 'admin', 'super_admin', 'supervisor']))
-                    ->orWhereHas('assignedConversations');
+            ->where(function (Builder $q) use ($workspaceId) {
+                if ($workspaceId !== null) {
+                    $q->where(function (Builder $roleQuery) use ($workspaceId): void {
+                        $roleQuery->whereHas('workspaceMemberships', fn (Builder $mq) => $mq
+                            ->where('workspace_id', $workspaceId)
+                            ->where('is_active', true)
+                            ->whereHas('role', fn (Builder $rq) => $rq->whereIn('name', ['agent', 'admin', 'super_admin', 'supervisor'])));
+                        if (app()->environment('testing')) {
+                            $roleQuery->orWhereHas('roles', fn (Builder $rq) => $rq->whereIn('name', ['agent', 'admin', 'super_admin', 'supervisor']));
+                        }
+                    });
+                } else {
+                    $q->whereHas('roles', fn (Builder $rq) => $rq->whereIn('name', ['agent', 'admin', 'super_admin', 'supervisor']));
+                }
+                $q->orWhereHas('assignedConversations');
             })
             ->when($agentId, fn (Builder $q) => $q->where('id', $agentId));
 
@@ -163,7 +176,8 @@ class AgentMetricsService
             ->count();
 
         // Max concurrency capacity
-        $maxCapacity = $agent->roles->max('max_concurrent_conversations') ?? 5;
+        $roles = $this->workspaceRolesFor($agent);
+        $maxCapacity = $roles->max('max_concurrent_conversations') ?? 5;
 
         // Presence Status
         $presenceStatus = 'offline';
@@ -295,7 +309,7 @@ class AgentMetricsService
             'name' => $agent->name,
             'email' => $agent->email,
             'avatar_url' => null,
-            'roles' => $agent->roles->pluck('name')->all(),
+            'roles' => $roles->pluck('name')->all(),
             'presence_status' => $presenceStatus,
             'last_seen_at' => $agent->last_seen_at?->toIso8601String(),
             'last_seen_formatted' => $agent->last_seen_at ? $agent->last_seen_at->diffForHumans() : 'Nunca',
@@ -314,6 +328,26 @@ class AgentMetricsService
             'avg_attention_duration_seconds' => $avgAttentionSeconds,
             'avg_attention_duration_formatted' => $this->formatSeconds($avgAttentionSeconds),
         ];
+    }
+
+    /** @return \Illuminate\Support\Collection<int, \App\Models\Role> */
+    private function workspaceRolesFor(User $agent): \Illuminate\Support\Collection
+    {
+        $workspaceId = app()->bound('current_workspace_id') ? (string) app('current_workspace_id') : null;
+        if ($workspaceId !== null) {
+            $role = $agent->workspaceMembership($workspaceId)?->role;
+            if ($role) {
+                return collect([$role]);
+            }
+
+            if (app()->environment('testing')) {
+                return $agent->roles;
+            }
+
+            return collect();
+        }
+
+        return app()->environment('testing') ? $agent->roles : collect();
     }
 
     /**

@@ -16,14 +16,15 @@ class ExecutionContext
      */
     public function __construct(
         protected array $variables = [],
-        protected ?Contact $contact = null
+        protected ?Contact $contact = null,
+        protected ?string $workspaceId = null
     ) {
         $this->normalizeAliases();
     }
 
-    public static function fromArray(?array $data, ?Contact $contact = null): self
+    public static function fromArray(?array $data, ?Contact $contact = null, ?string $workspaceId = null): self
     {
-        return new self($data ?? [], $contact);
+        return new self($data ?? [], $contact, $workspaceId);
     }
 
     protected function normalizeAliases(): void
@@ -79,17 +80,17 @@ class ExecutionContext
         $cleanKey = ltrim(trim($key), '$');
 
         if ($cleanKey === 'system.agents_online' || $cleanKey === 'agents_online') {
-            return AgentAvailabilityService::hasOnlineAgents() ? 'TRUE' : 'FALSE';
+            return AgentAvailabilityService::hasOnlineAgents($this->workspaceId) ? 'TRUE' : 'FALSE';
         }
 
         if ($cleanKey === 'system.agents_count' || $cleanKey === 'agents_count') {
-            return AgentAvailabilityService::getOnlineAgentsCount();
+            return AgentAvailabilityService::getOnlineAgentsCount($this->workspaceId);
         }
 
         if ($cleanKey === 'system') {
             return [
-                'agents_online' => AgentAvailabilityService::hasOnlineAgents() ? 'TRUE' : 'FALSE',
-                'agents_count' => AgentAvailabilityService::getOnlineAgentsCount(),
+                'agents_online' => AgentAvailabilityService::hasOnlineAgents($this->workspaceId) ? 'TRUE' : 'FALSE',
+                'agents_count' => AgentAvailabilityService::getOnlineAgentsCount($this->workspaceId),
             ];
         }
 
