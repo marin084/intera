@@ -396,7 +396,7 @@ class ConversationInactivityService
             'var_nombre' => $displayName,
         ];
 
-        $context = new ExecutionContext($variables, $contact);
+        $context = new ExecutionContext($variables, $contact, (string) $conversation->workspace_id);
         $interpolated = $this->interpolator->interpolate($template, $context);
 
         return $interpolated['text'];

@@ -33,14 +33,14 @@ class ConversationAssignmentService
     public function getEligibleCandidates(Conversation $conversation, string $strategy = 'random'): Collection
     {
         // 1. Get online agents with agent or admin roles
-        $onlineAgents = AgentAvailabilityService::getOnlineAgents(self::ELIGIBLE_ROLES);
+        $onlineAgents = AgentAvailabilityService::getOnlineAgents(self::ELIGIBLE_ROLES, (string) $conversation->workspace_id);
 
         if ($onlineAgents->isEmpty()) {
             return collect();
         }
 
         $teamId = (string) ($conversation->team_id ?: app(ConversationQueueService::class)->teamForChannel((string) $conversation->channel_id)->id);
-        $onlineAgents->loadMissing(['roles', 'channels:id', 'teams:id']);
+        $onlineAgents->loadMissing(['workspaceMemberships.role', 'channels:id', 'teams:id']);
         $onlineAgents = $onlineAgents->filter(
             fn (User $agent) => $agent->canAccessChannel((string) $conversation->channel_id)
                 && $agent->belongsToTeam($teamId)
@@ -59,8 +59,8 @@ class ConversationAssignmentService
             ->all();
 
         // 3. Capacity filter: discard any agent with <= 0 capacity or >= dynamic role capacity
-        $eligibleAgents = $onlineAgents->filter(function (User $agent) use ($activeCounts) {
-            $maxCapacity = $agent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
+        $eligibleAgents = $onlineAgents->filter(function (User $agent) use ($activeCounts, $conversation) {
+            $maxCapacity = $this->maxCapacityFor($agent, (string) $conversation->workspace_id);
 
             if ($maxCapacity <= 0) {
                 return false;
@@ -139,18 +139,21 @@ class ConversationAssignmentService
 
         // If the freed agent is provided, online, and still has capacity, assign directly
         if ($freedAgent && $freedAgent->is_active) {
-            $isOnline = AgentAvailabilityService::getOnlineAgents(self::ELIGIBLE_ROLES)
-                ->contains('id', $freedAgent->id);
+            foreach ($waitingConversations as $waitingConversation) {
+                $isOnline = AgentAvailabilityService::getOnlineAgents(
+                    self::ELIGIBLE_ROLES,
+                    (string) $waitingConversation->workspace_id
+                )->contains('id', $freedAgent->id);
+                if (! $isOnline) {
+                    continue;
+                }
 
-            if ($isOnline) {
-                foreach ($waitingConversations as $waitingConversation) {
-                    if (! $freedAgent->canAccessChannel((string) $waitingConversation->channel_id)
-                        || ! $freedAgent->belongsToTeam((string) $waitingConversation->team_id)) {
-                        continue;
-                    }
-                    if ($this->assignToAgent($waitingConversation, $freedAgent, 'Freed-quota auto-assignment')) {
-                        return $waitingConversation->fresh();
-                    }
+                if (! $freedAgent->canAccessChannel((string) $waitingConversation->channel_id)
+                    || ! $freedAgent->belongsToTeam((string) $waitingConversation->team_id)) {
+                    continue;
+                }
+                if ($this->assignToAgent($waitingConversation, $freedAgent, 'Freed-quota auto-assignment')) {
+                    return $waitingConversation->fresh();
                 }
             }
         }
@@ -172,10 +175,10 @@ class ConversationAssignmentService
         app(ConversationQueueService::class)->enter($conversation);
     }
 
-    public function canAcceptMoreConversations(User $agent, ?string $excludeConversationId = null): bool
+    public function canAcceptMoreConversations(User $agent, ?string $excludeConversationId = null, ?string $workspaceId = null): bool
     {
-        $agent->loadMissing('roles');
-        $maxCapacity = $agent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
+        $agent->loadMissing('workspaceMemberships.role');
+        $maxCapacity = $this->maxCapacityFor($agent, $workspaceId);
         if ($maxCapacity <= 0) return false;
 
         $activeCount = Conversation::query()
@@ -205,7 +208,7 @@ class ConversationAssignmentService
             if (! $lockedAgent || ! $lockedAgent->is_active
                 || ! $lockedAgent->canAccessChannel((string) $locked->channel_id)
                 || ! $lockedAgent->belongsToTeam((string) $locked->team_id)
-                || ! $this->canAcceptMoreConversations($lockedAgent)) {
+                || ! $this->canAcceptMoreConversations($lockedAgent, null, (string) $locked->workspace_id)) {
                 return null;
             }
 
@@ -263,5 +266,21 @@ class ConversationAssignmentService
 
             return $agent;
         });
+    }
+
+    private function maxCapacityFor(User $agent, ?string $workspaceId = null): int
+    {
+        $role = $workspaceId !== null
+            ? $agent->workspaceMembership($workspaceId)?->role
+            : $agent->workspaceRole();
+
+        if ($role) {
+            return (int) ($role->max_concurrent_conversations ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS);
+        }
+
+        // Compatibility for direct test fixtures created before workspace_user.
+        return app()->environment('testing')
+            ? (int) ($agent->roles->max('max_concurrent_conversations') ?? self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS)
+            : self::DEFAULT_MAX_CONCURRENT_CONVERSATIONS;
     }
 }

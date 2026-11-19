@@ -129,6 +129,22 @@ class User extends Authenticatable
             ->first();
     }
 
+    /**
+     * Return the role granted by the active workspace membership.
+     *
+     * Business requests must use this role instead of the legacy role_user
+     * relation, which has no tenant discriminator.
+     */
+    public function workspaceRole(?string $workspaceId = null): ?Role
+    {
+        return $this->workspaceMembership($workspaceId)?->role;
+    }
+
+    public function belongsToWorkspace(?string $workspaceId = null): bool
+    {
+        return $this->workspaceMembership($workspaceId) !== null;
+    }
+
     public function canAccessChannel(string $channelId): bool
     {
         if ($this->hasRole('super_admin')) {

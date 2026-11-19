@@ -43,6 +43,7 @@ class FlowSimulationController extends Controller
         }
 
         $user = $request->user();
+        $this->assertFlowBelongsToCurrentWorkspace($flow);
 
         // Si se enviaron cambios no guardados del borrador, guardarlos atómicamente antes de simular
         if ($request->has('save_draft_graph') && $version->status === FlowVersionStatus::DRAFT) {
@@ -156,6 +157,7 @@ class FlowSimulationController extends Controller
         if (! $conversation) {
             return response()->json(['message' => 'Conversación asociada no encontrada.'], 404);
         }
+        $this->assertSimulationIntegrity($session, $flow, $version, $execution, $conversation, $user);
 
         // Impedir avances en simulaciones finalizadas o fallidas
         if (in_array($execution->status, [FlowExecutionStatus::COMPLETED, FlowExecutionStatus::FAILED, FlowExecutionStatus::CANCELLED], true)) {
@@ -219,6 +221,7 @@ class FlowSimulationController extends Controller
 
         $session = FlowSimulationSession::where('flow_execution_id', $executionModel->id)->first();
         $conversation = $executionModel->conversation;
+        $this->assertSimulationIntegrity($session, $flow, $version, $executionModel, $conversation, $request->user());
 
         return response()->json([
             'data' => $this->formatSimulationState($executionModel, $conversation, $version, $session),
@@ -236,7 +239,9 @@ class FlowSimulationController extends Controller
 
         $prevExecutionId = $request->input('execution_id');
         if (! empty($prevExecutionId)) {
-            $prevExecution = FlowExecution::where('id', $prevExecutionId)->first();
+            $prevExecution = FlowExecution::where('id', $prevExecutionId)
+                ->where('flow_version_id', $version->id)
+                ->first();
             if ($prevExecution && ! in_array($prevExecution->status, [FlowExecutionStatus::COMPLETED, FlowExecutionStatus::FAILED], true)) {
                 $prevExecution->update([
                     'status' => FlowExecutionStatus::CANCELLED,
@@ -270,12 +275,13 @@ class FlowSimulationController extends Controller
             ->where('flow_version_id', $version->id)
             ->firstOrFail();
 
+        $session = FlowSimulationSession::where('flow_execution_id', $execution->id)->first();
+        $this->assertSimulationIntegrity($session, $flow, $version, $execution, $execution->conversation, $request->user());
         $execution->update([
             'status' => FlowExecutionStatus::CANCELLED,
             'completed_at' => now(),
         ]);
 
-        $session = FlowSimulationSession::where('flow_execution_id', $execution->id)->first();
         if ($session) {
             $session->update([
                 'status' => 'cancelled',
@@ -287,6 +293,49 @@ class FlowSimulationController extends Controller
             'message' => 'Simulación detenida.',
             'data' => $this->formatSimulationState($execution, $execution->conversation, $version, $session),
         ]);
+    }
+
+    private function assertFlowBelongsToCurrentWorkspace(Flow $flow): void
+    {
+        abort_unless(
+            app()->bound('current_workspace_id')
+            && (string) $flow->workspace_id === (string) app('current_workspace_id'),
+            404
+        );
+    }
+
+    private function assertSimulationIntegrity(
+        ?FlowSimulationSession $session,
+        Flow $flow,
+        FlowVersion $version,
+        FlowExecution $execution,
+        ?Conversation $conversation,
+        $user
+    ): void {
+        $workspaceId = (string) app('current_workspace_id');
+        $this->assertFlowBelongsToCurrentWorkspace($flow);
+
+        abort_unless((string) $version->flow_id === (string) $flow->id, 404);
+        abort_unless((string) $execution->flow_version_id === (string) $version->id, 404);
+        abort_unless((string) ($execution->flow_id ?? $flow->id) === (string) $flow->id, 404);
+        abort_unless($conversation !== null, 404);
+        abort_unless((string) $conversation->workspace_id === $workspaceId, 404);
+        abort_unless((string) $conversation->active_flow_id === (string) $flow->id, 422);
+        abort_unless((string) $conversation->active_flow_version_id === (string) $version->id, 422);
+        abort_unless((string) $execution->conversation_id === (string) $conversation->id, 422);
+
+        if (! $session) {
+            abort(404, 'Sesión de simulación no encontrada.');
+        }
+
+        abort_unless((string) $session->flow_id === (string) $flow->id, 422);
+        abort_unless((string) $session->flow_version_id === (string) $version->id, 422);
+        abort_unless((string) $session->conversation_id === (string) $conversation->id, 422);
+        abort_unless((string) $session->flow_execution_id === (string) $execution->id, 422);
+
+        if ((int) $session->user_id !== (int) $user->id && ! $user->hasPermission('flows.edit')) {
+            abort(403, 'No autorizado para consultar esta simulación.');
+        }
     }
 
     /**

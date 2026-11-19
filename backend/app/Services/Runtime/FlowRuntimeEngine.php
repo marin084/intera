@@ -140,7 +140,7 @@ class FlowRuntimeEngine
                 ->latest('entered_at')
                 ->first();
 
-            $context = ExecutionContext::fromArray($execution->context, $conversation->contact);
+            $context = ExecutionContext::fromArray($execution->context, $conversation->contact, (string) $conversation->workspace_id);
 
             try {
                 $handler = $this->registry->get($currentNode->type->value);
@@ -310,7 +310,11 @@ class FlowRuntimeEngine
                 $lockedExecution->save();
             }
 
-            $context = ExecutionContext::fromArray($lockedExecution->context, $lockedExecution->conversation?->contact);
+            $context = ExecutionContext::fromArray(
+                $lockedExecution->context,
+                $lockedExecution->conversation?->contact,
+                (string) $lockedExecution->conversation?->workspace_id
+            );
 
             $maxSteps = (int) config('flows.max_steps_per_run', 100);
             $maxVisitsPerNode = (int) config('flows.max_node_visits_per_turn', 10);
@@ -684,7 +688,7 @@ class FlowRuntimeEngine
 
         $conversation->loadMissing('contact');
         $contact = $conversation->contact;
-        $context = new ExecutionContext([], $contact);
+        $context = new ExecutionContext([], $contact, (string) $conversation->workspace_id);
 
         if ($contact) {
             // 1. Preload stored flow variables

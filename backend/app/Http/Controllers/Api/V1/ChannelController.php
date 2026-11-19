@@ -108,17 +108,19 @@ class ChannelController extends Controller
         ]);
 
         if (! empty($validated['entry_flow_id'])) {
-            $entryFlow = Flow::find($validated['entry_flow_id']);
-            if ($entryFlow) {
-                $applicability = $entryFlow->channel_applicability ?? ['webchat'];
-                if (! in_array($validated['type'], $applicability, true)) {
-                    return response()->json([
-                        'message' => "El flujo '{$entryFlow->name}' no es compatible con canales de tipo '{$validated['type']}'. Canales compatibles con este flujo: ".implode(', ', $applicability).'.',
-                        'errors' => [
-                            'entry_flow_id' => ['El flujo seleccionado solo es aplicable a: '.implode(', ', $applicability).'.'],
-                        ],
-                    ], 422);
-                }
+            $entryFlow = Flow::query()->whereKey($validated['entry_flow_id'])->first();
+            if (! $entryFlow) {
+                return response()->json(['message' => 'El flujo seleccionado no pertenece al espacio de trabajo actual.'], 422);
+            }
+
+            $applicability = $entryFlow->channel_applicability ?? ['webchat'];
+            if (! in_array($validated['type'], $applicability, true)) {
+                return response()->json([
+                    'message' => "El flujo '{$entryFlow->name}' no es compatible con canales de tipo '{$validated['type']}'. Canales compatibles con este flujo: ".implode(', ', $applicability).'.',
+                    'errors' => [
+                        'entry_flow_id' => ['El flujo seleccionado solo es aplicable a: '.implode(', ', $applicability).'.'],
+                    ],
+                ], 422);
             }
         }
 
@@ -336,18 +338,20 @@ class ChannelController extends Controller
         ]);
 
         if (array_key_exists('entry_flow_id', $validated) && ! empty($validated['entry_flow_id'])) {
-            $entryFlow = Flow::find($validated['entry_flow_id']);
+            $entryFlow = Flow::query()->whereKey($validated['entry_flow_id'])->first();
             $channelType = is_object($channel->type) ? $channel->type->value : $channel->type;
-            if ($entryFlow) {
-                $applicability = $entryFlow->channel_applicability ?? ['webchat'];
-                if (! in_array($channelType, $applicability, true)) {
-                    return response()->json([
-                        'message' => "El flujo '{$entryFlow->name}' no es compatible con canales de tipo '{$channelType}'. Canales compatibles con este flujo: ".implode(', ', $applicability).'.',
-                        'errors' => [
-                            'entry_flow_id' => ['El flujo seleccionado solo es aplicable a: '.implode(', ', $applicability).'.'],
-                        ],
-                    ], 422);
-                }
+            if (! $entryFlow) {
+                return response()->json(['message' => 'El flujo seleccionado no pertenece al espacio de trabajo actual.'], 422);
+            }
+
+            $applicability = $entryFlow->channel_applicability ?? ['webchat'];
+            if (! in_array($channelType, $applicability, true)) {
+                return response()->json([
+                    'message' => "El flujo '{$entryFlow->name}' no es compatible con canales de tipo '{$channelType}'. Canales compatibles con este flujo: ".implode(', ', $applicability).'.',
+                    'errors' => [
+                        'entry_flow_id' => ['El flujo seleccionado solo es aplicable a: '.implode(', ', $applicability).'.'],
+                    ],
+                ], 422);
             }
         }
 

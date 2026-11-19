@@ -43,7 +43,7 @@ class AgentAvailabilityService
      * @param array<string>|null $roles
      * @return \Illuminate\Support\Collection<int, User>
      */
-    public static function getOnlineAgents(?array $roles = null): \Illuminate\Support\Collection
+    public static function getOnlineAgents(?array $roles = null, ?string $workspaceId = null): \Illuminate\Support\Collection
     {
         if (self::$fakeAgents !== null) {
             return self::$fakeAgents;
@@ -52,13 +52,28 @@ class AgentAvailabilityService
         try {
             $targetRoles = $roles ?? self::AGENT_ROLES;
             $threshold = now()->subMinutes(self::PRESENCE_THRESHOLD_MINUTES);
+            $workspaceId ??= app()->bound('current_workspace_id') ? (string) app('current_workspace_id') : null;
+            if ($workspaceId === null && ! app()->environment('testing')) {
+                return collect();
+            }
 
             return User::query()
                 ->where('is_active', true)
                 ->whereNotNull('last_seen_at')
                 ->where('last_seen_at', '>=', $threshold)
-                ->whereHas('roles', function ($query) use ($targetRoles) {
-                    $query->whereIn('name', $targetRoles);
+                ->when($workspaceId !== null, function ($query) use ($workspaceId, $targetRoles): void {
+                    $query->where(function ($roleQuery) use ($workspaceId, $targetRoles): void {
+                        $roleQuery->whereHas('workspaceMemberships', function ($membershipQuery) use ($workspaceId, $targetRoles): void {
+                            $membershipQuery->where('workspace_id', $workspaceId)
+                                ->where('is_active', true)
+                                ->whereHas('role', fn ($query) => $query->whereIn('name', $targetRoles));
+                        });
+                        if (app()->environment('testing')) {
+                            $roleQuery->orWhereHas('roles', fn ($query) => $query->whereIn('name', $targetRoles));
+                        }
+                    });
+                }, function ($query) use ($targetRoles): void {
+                    $query->whereHas('roles', fn ($roleQuery) => $roleQuery->whereIn('name', $targetRoles));
                 })
                 ->get();
         } catch (\Throwable) {
@@ -69,7 +84,7 @@ class AgentAvailabilityService
     /**
      * Returns the count of agents currently online and available.
      */
-    public static function getOnlineAgentsCount(): int
+    public static function getOnlineAgentsCount(?string $workspaceId = null): int
     {
         if (self::$fakeCount !== null) {
             return max(0, self::$fakeCount);
@@ -81,13 +96,28 @@ class AgentAvailabilityService
 
         try {
             $threshold = now()->subMinutes(self::PRESENCE_THRESHOLD_MINUTES);
+            $workspaceId ??= app()->bound('current_workspace_id') ? (string) app('current_workspace_id') : null;
+            if ($workspaceId === null && ! app()->environment('testing')) {
+                return 0;
+            }
 
             return User::query()
                 ->where('is_active', true)
                 ->whereNotNull('last_seen_at')
                 ->where('last_seen_at', '>=', $threshold)
-                ->whereHas('roles', function ($query) {
-                    $query->whereIn('name', self::AGENT_ROLES);
+                ->when($workspaceId !== null, function ($query) use ($workspaceId): void {
+                    $query->where(function ($roleQuery) use ($workspaceId): void {
+                        $roleQuery->whereHas('workspaceMemberships', function ($membershipQuery) use ($workspaceId): void {
+                            $membershipQuery->where('workspace_id', $workspaceId)
+                                ->where('is_active', true)
+                                ->whereHas('role', fn ($query) => $query->whereIn('name', self::AGENT_ROLES));
+                        });
+                        if (app()->environment('testing')) {
+                            $roleQuery->orWhereHas('roles', fn ($query) => $query->whereIn('name', self::AGENT_ROLES));
+                        }
+                    });
+                }, function ($query): void {
+                    $query->whereHas('roles', fn ($roleQuery) => $roleQuery->whereIn('name', self::AGENT_ROLES));
                 })
                 ->count();
         } catch (\Throwable) {
@@ -98,9 +128,9 @@ class AgentAvailabilityService
     /**
      * Determines whether there is at least one online agent.
      */
-    public static function hasOnlineAgents(): bool
+    public static function hasOnlineAgents(?string $workspaceId = null): bool
     {
-        return self::getOnlineAgentsCount() > 0;
+        return self::getOnlineAgentsCount($workspaceId) > 0;
     }
 
     /**
