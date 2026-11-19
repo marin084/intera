@@ -219,7 +219,10 @@ class WorkspaceController extends Controller
 
     private function canManageAnyWorkspace(User $user): bool
     {
-        return (bool) $user->is_platform_admin || $user->hasRole(['super_admin', 'admin']);
+        // Workspace roles are intentionally never enough for this global
+        // branch. A workspace administrator must be evaluated against the
+        // explicit workspace membership instead of seeing every tenant.
+        return (bool) $user->is_platform_admin;
     }
 
     private function ensurePlatformAdministrator(User $user): void

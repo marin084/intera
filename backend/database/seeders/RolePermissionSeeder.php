@@ -70,6 +70,18 @@ class RolePermissionSeeder extends Seeder
             ]
         );
 
+        // Workspace administrators manage one tenant at a time. They can
+        // administer its business resources and members, but platform-only
+        // configuration and role-definition changes remain outside this role.
+        $workspaceAdmin = Role::updateOrCreate(
+            ['name' => 'admin'],
+            [
+                'display_name' => 'Administrador de Workspace',
+                'description' => 'Administra usuarios, canales, flujos, equipos y conversaciones dentro de su workspace.',
+                'max_concurrent_conversations' => 0,
+            ]
+        );
+
         $flowManager = Role::updateOrCreate(
             ['name' => 'flow_manager'],
             [
@@ -99,6 +111,31 @@ class RolePermissionSeeder extends Seeder
 
         // Assign all permissions to super_admin
         $superAdmin->permissions()->sync(Permission::all());
+
+        $workspaceAdminPermissions = Permission::whereIn('name', [
+            'users.view',
+            'users.manage',
+            'roles.view',
+            'channels.view',
+            'channels.manage',
+            'flows.view',
+            'flows.create',
+            'flows.edit',
+            'flows.publish',
+            'flows.delete',
+            'conversations.view_all',
+            'conversations.view_assigned',
+            'conversations.reply',
+            'conversations.assign',
+            'canned_responses.view',
+            'canned_responses.manage',
+            'agents.view',
+            'teams.view',
+            'teams.manage',
+            'workspaces.manage',
+            'audit_logs.view',
+        ])->get();
+        $workspaceAdmin->permissions()->sync($workspaceAdminPermissions);
 
         // Assign flow manager permissions
         $flowManagerPermissions = Permission::whereIn('name', [

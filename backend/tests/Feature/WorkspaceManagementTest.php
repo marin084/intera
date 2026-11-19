@@ -77,6 +77,26 @@ class WorkspaceManagementTest extends TestCase
         $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $member->id, 'is_active' => false]);
     }
 
+    public function test_workspace_admin_only_sees_and_manages_assigned_workspace(): void
+    {
+        $workspaceAdmin = User::create([
+            'name' => 'Workspace Admin',
+            'email' => 'workspace-admin@example.com',
+            'password' => Hash::make('SecurePassword2026!'),
+            'is_active' => true,
+            'is_platform_admin' => false,
+        ]);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $workspaceA = Workspace::create(['name' => 'Workspace A', 'slug' => 'workspace-a', 'initial_owner_id' => $workspaceAdmin->id]);
+        $workspaceB = Workspace::create(['name' => 'Workspace B', 'slug' => 'workspace-b']);
+        WorkspaceUser::create(['workspace_id' => $workspaceA->id, 'user_id' => $workspaceAdmin->id, 'role_id' => $adminRole->id, 'is_active' => true]);
+
+        $response = $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/workspaces');
+
+        $response->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', (string) $workspaceA->id);
+        $this->actingAs($workspaceAdmin, 'sanctum')->getJson("/api/v1/workspaces/{$workspaceB->id}/members")->assertForbidden();
+    }
+
     public function test_workspace_cannot_remove_owner_or_last_active_super_admin(): void
     {
         $owner = $this->makeUser('owner-safety@example.com');

@@ -34,7 +34,7 @@ class RoleController extends Controller
     public function update(Request $request, Role $role): JsonResponse
     {
         $roleName = $role->name;
-        $min = in_array($roleName, ['super_admin', 'flow_manager'], true) ? 0 : 1;
+        $min = in_array($roleName, ['super_admin', 'admin', 'flow_manager'], true) ? 0 : 1;
 
         $validated = $request->validate([
             'max_concurrent_conversations' => ['nullable', 'integer', "min:{$min}", 'max:50'],

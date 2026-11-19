@@ -56,7 +56,7 @@ export const RolesView: React.FC = () => {
   const [savingRoleId, setSavingRoleId] = useState<number | null>(null);
 
   const getRoleMinCapacity = (roleName: string): number => {
-    return roleName === 'super_admin' || roleName === 'flow_manager' ? 0 : 1;
+    return ['super_admin', 'admin', 'flow_manager'].includes(roleName) ? 0 : 1;
   };
 
   const getRoleDisplayName = (role: Role): string => {
