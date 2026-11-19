@@ -355,7 +355,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
             </div>
           </div>
 
-          {workspaces.length > 0 && (
+          {isPlatformAdmin && workspaces.length > 0 ? (
             <label className="workspace-switcher" title="Workspace activo">
               <span className="workspace-switcher-label">Workspace</span>
               <select
@@ -369,7 +369,12 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
                 ))}
               </select>
             </label>
-          )}
+          ) : workspace ? (
+            <div className="workspace-context" aria-label={`Workspace activo: ${workspace.name}`}>
+              <span className="workspace-switcher-label">Workspace</span>
+              <strong>{workspace.name}</strong>
+            </div>
+          ) : null}
         </header>
 
         <div className={`content-body content-body--${currentTab}`}>

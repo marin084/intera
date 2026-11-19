@@ -304,6 +304,24 @@ body {
   white-space: nowrap;
 }
 
+.workspace-context {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.workspace-context strong {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
 .workspace-switcher select {
   min-width: 170px;
   max-width: 260px;
@@ -1936,6 +1954,11 @@ body.zen-mode .flow-workspace {
 
   .workspace-switcher-label {
     display: none;
+  }
+
+  .workspace-context strong {
+    max-width: 150px;
+    font-size: 0.85rem;
   }
 
   .workspace-switcher select {
