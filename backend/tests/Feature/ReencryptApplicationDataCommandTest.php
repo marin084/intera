@@ -23,8 +23,11 @@ class ReencryptApplicationDataCommandTest extends TestCase
         $oldChannelSecret = $old->encryptString('telegram-token');
         $oldSetting = $old->encryptString('discord-webhook');
 
+        $workspaceId = DB::table('workspaces')->value('id') ?? (string) Str::uuid();
+
         DB::table('channels')->insert([
             'id' => $channelId,
+            'workspace_id' => $workspaceId,
             'name' => 'Telegram test',
             'type' => 'telegram',
             'configuration' => json_encode(['bot_token' => $oldChannelSecret]),
@@ -58,8 +61,11 @@ class ReencryptApplicationDataCommandTest extends TestCase
         $channelId = (string) Str::uuid();
         $oldChannelSecret = $old->encryptString('telegram-token');
 
+        $workspaceId = DB::table('workspaces')->value('id') ?? (string) Str::uuid();
+
         DB::table('channels')->insert([
             'id' => $channelId,
+            'workspace_id' => $workspaceId,
             'name' => 'Telegram test',
             'type' => 'telegram',
             'configuration' => json_encode(['bot_token' => $oldChannelSecret]),

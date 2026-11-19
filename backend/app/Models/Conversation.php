@@ -6,6 +6,7 @@ use App\Enums\ChannelType;
 use App\Enums\ConversationStatus;
 use App\Enums\FlowExecutionStatus;
 use App\Enums\MessageDirection;
+use App\Models\Concerns\BelongsToWorkspace;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -17,11 +18,12 @@ use Illuminate\Support\Str;
 
 class Conversation extends Model
 {
-    use HasFactory, HasUuids;
+    use BelongsToWorkspace, HasFactory, HasUuids;
 
     protected $appends = ['whatsapp_window', 'meta_window', 'closing_assigned_user_id'];
 
     protected $fillable = [
+        'workspace_id',
         'channel_id',
         'contact_id',
         'team_id',

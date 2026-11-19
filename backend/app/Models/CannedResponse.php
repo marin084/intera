@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToWorkspace;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,9 +11,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CannedResponse extends Model
 {
-    use HasFactory, HasUuids;
+    use BelongsToWorkspace, HasFactory, HasUuids;
 
     protected $fillable = [
+        'workspace_id',
         'title',
         'shortcut',
         'content',
@@ -44,7 +46,7 @@ class CannedResponse extends Model
 
     public function getFormattedShortcutAttribute(): ?string
     {
-        return $this->shortcut ? '/' . ltrim($this->shortcut, '/') : null;
+        return $this->shortcut ? '/'.ltrim($this->shortcut, '/') : null;
     }
 
     public function setShortcutAttribute(?string $value): void

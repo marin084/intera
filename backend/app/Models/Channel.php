@@ -4,23 +4,25 @@ namespace App\Models;
 
 use App\Casts\EncryptedChannelConfiguration;
 use App\Enums\ChannelType;
+use App\Models\Concerns\BelongsToWorkspace;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
-use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 class Channel extends Model
 {
-    use HasFactory, HasUuids;
+    use BelongsToWorkspace, HasFactory, HasUuids;
 
     public const DEFAULT_INACTIVITY_WARNING_MESSAGE = 'Hola {{nombre}}, notamos que no has respondido en los últimos minutos. ¿Sigues por aquí? Si no recibes o envías respuesta pronto, daremos por finalizada la sesión.';
 
     public const DEFAULT_INACTIVITY_CLOSE_MESSAGE = 'Por inactividad hemos dado por finalizada esta conversación. ¡Cuando gustes, vuelve a escribirnos!';
 
     protected $fillable = [
+        'workspace_id',
         'name',
         'type',
         'is_active',

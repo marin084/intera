@@ -14,6 +14,7 @@ class AuditLog extends Model
     public $timestamps = false;
 
     protected $fillable = [
+        'workspace_id',
         'user_id',
         'action',
         'entity_type',
@@ -30,6 +31,11 @@ class AuditLog extends Model
             'metadata' => 'array',
             'created_at' => 'datetime',
         ];
+    }
+
+    public function workspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class);
     }
 
     public function user(): BelongsTo
