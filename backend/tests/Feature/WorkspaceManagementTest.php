@@ -35,7 +35,8 @@ class WorkspaceManagementTest extends TestCase
         $response->assertCreated()->assertJsonPath('data.name', 'Ventas Costa Rica')->assertJsonPath('data.slug', 'ventas-costa-rica');
         $workspace = Workspace::where('slug', 'ventas-costa-rica')->firstOrFail();
         $this->assertSame($admin->id, $workspace->initial_owner_id);
-        $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $admin->id, 'role_id' => $this->superAdmin->id, 'is_active' => true]);
+        $workspaceAdmin = Role::where('name', 'admin')->firstOrFail();
+        $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $admin->id, 'role_id' => $workspaceAdmin->id, 'is_active' => true]);
     }
 
     public function test_non_administrator_cannot_create_or_manage_workspace_members(): void
@@ -109,6 +110,13 @@ class WorkspaceManagementTest extends TestCase
         ]);
         WorkspaceUser::create(['workspace_id' => $workspaceB->id, 'user_id' => $foreignMember->id, 'role_id' => $agentRole->id, 'is_active' => true]);
 
+        $this->actingAs($workspaceAdmin, 'sanctum')
+            ->postJson("/api/v1/workspaces/{$workspaceA->id}/members", [
+                'email' => $workspaceMember->email,
+                'role' => 'super_admin',
+            ])
+            ->assertUnprocessable();
+
         $usersResponse = $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/users');
 
         $usersResponse->assertOk()->assertJsonCount(2, 'data');
@@ -142,11 +150,12 @@ class WorkspaceManagementTest extends TestCase
         $this->assertContains('admin', collect($rolesResponse->json('data'))->pluck('name')->all());
     }
 
-    public function test_workspace_cannot_remove_owner_or_last_active_super_admin(): void
+    public function test_workspace_cannot_remove_owner_or_last_active_admin(): void
     {
         $owner = $this->makeUser('owner-safety@example.com');
         $workspace = Workspace::create(['name' => 'Safety', 'slug' => 'safety', 'initial_owner_id' => $owner->id]);
-        WorkspaceUser::create(['workspace_id' => $workspace->id, 'user_id' => $owner->id, 'role_id' => $this->superAdmin->id, 'is_active' => true]);
+        $workspaceAdmin = Role::where('name', 'admin')->firstOrFail();
+        WorkspaceUser::create(['workspace_id' => $workspace->id, 'user_id' => $owner->id, 'role_id' => $workspaceAdmin->id, 'is_active' => true]);
 
         $response = $this->actingAs($owner, 'sanctum')->deleteJson("/api/v1/workspaces/{$workspace->id}/members/{$owner->id}");
 

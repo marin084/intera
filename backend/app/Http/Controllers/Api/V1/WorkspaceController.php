@@ -90,14 +90,14 @@ class WorkspaceController extends Controller
         ]);
         $name = trim($validated['name']);
         $slug = $this->resolveUniqueSlug($validated['slug'] ?? $name);
-        $superAdminRole = Role::query()->where('name', 'super_admin')->first();
-        if (! $superAdminRole) {
-            return response()->json(['message' => 'No se encontró el rol de administrador de workspaces.'], 422);
+        $workspaceAdminRole = Role::query()->where('name', 'admin')->first();
+        if (! $workspaceAdminRole) {
+            return response()->json(['message' => 'No se encontró el rol de administrador del workspace.'], 422);
         }
 
-        $workspace = DB::transaction(function () use ($name, $slug, $user, $superAdminRole): Workspace {
+        $workspace = DB::transaction(function () use ($name, $slug, $user, $workspaceAdminRole): Workspace {
             $workspace = Workspace::create(['name' => $name, 'slug' => $slug, 'status' => 'active', 'initial_owner_id' => $user->id, 'configuration' => []]);
-            WorkspaceUser::create(['workspace_id' => $workspace->id, 'user_id' => $user->id, 'role_id' => $superAdminRole->id, 'is_active' => true]);
+            WorkspaceUser::create(['workspace_id' => $workspace->id, 'user_id' => $user->id, 'role_id' => $workspaceAdminRole->id, 'is_active' => true]);
             return $workspace;
         });
 
@@ -126,11 +126,8 @@ class WorkspaceController extends Controller
         $this->ensureWorkspaceManager($actor, $workspace);
         $validated = $request->validate([
             'email' => ['required', 'email', 'max:255'],
-            'role' => ['required', 'string', 'in:admin,super_admin,supervisor,flow_manager,agent'],
+            'role' => ['required', 'string', 'in:admin,supervisor,flow_manager,agent'],
         ]);
-        if ($validated['role'] === 'super_admin' && ! $actor->is_platform_admin) {
-            return response()->json(['message' => 'El rol de administrador de plataforma solo puede asignarlo otro administrador de plataforma.'], 403);
-        }
         if ($workspace->status !== 'active') {
             return response()->json(['message' => 'El workspace no está activo.'], 422);
         }
@@ -154,12 +151,9 @@ class WorkspaceController extends Controller
         $actor = $request->user();
         $this->ensureWorkspaceManager($actor, $workspace);
         $validated = $request->validate([
-            'role' => ['sometimes', 'string', 'in:admin,super_admin,supervisor,flow_manager,agent'],
+            'role' => ['sometimes', 'string', 'in:admin,supervisor,flow_manager,agent'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
-        if (($validated['role'] ?? null) === 'super_admin' && ! $actor->is_platform_admin) {
-            return response()->json(['message' => 'El rol de administrador de plataforma solo puede asignarlo otro administrador de plataforma.'], 403);
-        }
         $membership = WorkspaceUser::query()->where('workspace_id', $workspace->id)->where('user_id', $member->id)->with(['user', 'role', 'workspace'])->first();
         if (! $membership) {
             return response()->json(['message' => 'El usuario no pertenece a este workspace.'], 404);
@@ -241,7 +235,9 @@ class WorkspaceController extends Controller
         if ($this->canManageAnyWorkspace($user)) {
             return;
         }
-        $isManager = WorkspaceUser::query()->where('workspace_id', $workspace->id)->where('user_id', $user->id)->where('is_active', true)->whereHas('role', fn ($query) => $query->whereIn('name', ['super_admin', 'admin']))->exists();
+        // Keep legacy super_admin memberships manageable until the normalization
+        // migration has run; new memberships may only use the workspace admin role.
+        $isManager = WorkspaceUser::query()->where('workspace_id', $workspace->id)->where('user_id', $user->id)->where('is_active', true)->whereHas('role', fn ($query) => $query->whereIn('name', ['admin', 'super_admin']))->exists();
         abort_unless($isManager, 403, 'No tienes permiso para administrar este workspace.');
     }
 
@@ -259,14 +255,19 @@ class WorkspaceController extends Controller
     private function ensureMembershipChangeIsSafe(Workspace $workspace, WorkspaceUser $membership, ?string $nextRole, bool $nextActive): void
     {
         $isOwner = (int) $workspace->initial_owner_id === (int) $membership->user_id;
-        if ($isOwner && (! $nextActive || $nextRole !== 'super_admin')) {
+        $administratorRoles = ['admin', 'super_admin'];
+        if ($isOwner && (! $nextActive || ! in_array($nextRole, $administratorRoles, true))) {
             abort(422, 'El propietario inicial debe conservar acceso activo como administrador del workspace.');
         }
 
         $currentlySoleAdmin = $membership->is_active
-            && $membership->role?->name === 'super_admin'
-            && (! $nextActive || $nextRole !== 'super_admin')
-            && ! $workspace->memberships()->where('is_active', true)->where('role_id', $membership->role_id)->where('id', '!=', $membership->id)->exists();
+            && in_array($membership->role?->name, $administratorRoles, true)
+            && (! $nextActive || ! in_array($nextRole, $administratorRoles, true))
+            && ! $workspace->memberships()
+                ->where('is_active', true)
+                ->where('id', '!=', $membership->id)
+                ->whereHas('role', fn ($query) => $query->whereIn('name', $administratorRoles))
+                ->exists();
         if ($currentlySoleAdmin) {
             abort(422, 'El workspace debe conservar al menos un administrador activo.');
         }

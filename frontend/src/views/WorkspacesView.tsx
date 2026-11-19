@@ -8,7 +8,6 @@ import { ConfirmModal } from '../components/common/ConfirmModal';
 
 const ASSIGNABLE_ROLES = [
   { value: 'admin', label: 'Administrador de Workspace' },
-  { value: 'super_admin', label: 'Administrador principal' },
   { value: 'supervisor', label: 'Supervisor de Atención' },
   { value: 'flow_manager', label: 'Gestor de Flujos' },
   { value: 'agent', label: 'Agente de Atención' },
