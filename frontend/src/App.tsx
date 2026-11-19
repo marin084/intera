@@ -16,6 +16,7 @@ const TeamsView = lazy(() => import('./views/TeamsView').then((m) => ({ default:
 const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
 const AccountView = lazy(() => import('./views/AccountView').then((m) => ({ default: m.AccountView })));
 const AdminSettingsView = lazy(() => import('./views/AdminSettingsView').then((m) => ({ default: m.AdminSettingsView })));
+const WorkspacesView = lazy(() => import('./views/WorkspacesView').then((m) => ({ default: m.WorkspacesView })));
 const DashboardsView = lazy(() => import('./views/Analytics/DashboardsView').then((m) => ({ default: m.DashboardsView })));
 const FlowEditor = lazy(() => import('./components/flow-editor/FlowEditor').then((m) => ({ default: m.FlowEditor })));
 
@@ -114,6 +115,7 @@ const TAB_PATHS: Record<string, string> = {
   roles: '/roles',
   audit: '/audit',
   'admin-settings': '/settings',
+  workspaces: '/workspaces',
   account: '/account',
 };
 
@@ -123,7 +125,8 @@ function parseTabPath(pathname: string): string {
 }
 
 const MainApp: React.FC = () => {
-  const { isAuthenticated, isLoading, hasPermission, hasRole } = useAuth();
+  const { isAuthenticated, isLoading, hasPermission, hasRole, user } = useAuth();
+  const isPlatformAdmin = Boolean(user?.is_platform_admin);
 
   // Keep staff presence current while the authenticated Intera app is open.
   useEffect(() => {
@@ -206,8 +209,9 @@ const MainApp: React.FC = () => {
     if (tab === 'channels') return hasPermission('channels.view') || hasPermission('channels.manage');
     if (tab === 'users') return hasPermission('users.view') || hasPermission('users.manage');
     if (tab === 'roles') return hasPermission('roles.view') || hasPermission('roles.manage');
-    if (tab === 'audit') return hasPermission('audit_logs.view');
+    if (tab === 'audit') return isPlatformAdmin;
     if (tab === 'admin-settings') return (typeof hasRole === 'function' && hasRole('admin')) || (typeof hasRole === 'function' && hasRole('super_admin'));
+    if (tab === 'workspaces') return isPlatformAdmin;
     return false;
   };
 
@@ -327,6 +331,8 @@ const MainApp: React.FC = () => {
         return <AccountView />;
       case 'admin-settings':
         return <AdminSettingsView />;
+      case 'workspaces':
+        return <WorkspacesView />;
       default:
         return <ConversationsView />;
     }

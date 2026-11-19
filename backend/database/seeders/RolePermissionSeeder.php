@@ -48,6 +48,9 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'teams.view', 'display_name' => 'Ver equipos y colas propias', 'module' => 'teams'],
             ['name' => 'teams.manage', 'display_name' => 'Administrar equipos y rutas', 'module' => 'teams'],
 
+            // Workspaces / tenants
+            ['name' => 'workspaces.manage', 'display_name' => 'Administrar espacios de trabajo', 'module' => 'workspaces'],
+
             // Audit & System
             ['name' => 'audit_logs.view', 'display_name' => 'Consultar logs de auditoría', 'module' => 'audit'],
             ['name' => 'instance.configure', 'display_name' => 'Configurar parámetros de la instancia', 'module' => 'system'],
@@ -63,6 +66,18 @@ class RolePermissionSeeder extends Seeder
             [
                 'display_name' => 'Administrador',
                 'description' => 'Control total del sistema, configuración, flujos, usuarios y auditoría.',
+                'max_concurrent_conversations' => 0,
+            ]
+        );
+
+        // Workspace administrators manage one tenant at a time. They can
+        // administer its business resources and members, but platform-only
+        // configuration and role-definition changes remain outside this role.
+        $workspaceAdmin = Role::updateOrCreate(
+            ['name' => 'admin'],
+            [
+                'display_name' => 'Administrador de Workspace',
+                'description' => 'Administra usuarios, canales, flujos, equipos y conversaciones dentro de su workspace.',
                 'max_concurrent_conversations' => 0,
             ]
         );
@@ -96,6 +111,30 @@ class RolePermissionSeeder extends Seeder
 
         // Assign all permissions to super_admin
         $superAdmin->permissions()->sync(Permission::all());
+
+        $workspaceAdminPermissions = Permission::whereIn('name', [
+            'users.view',
+            'users.manage',
+            'roles.view',
+            'channels.view',
+            'channels.manage',
+            'flows.view',
+            'flows.create',
+            'flows.edit',
+            'flows.publish',
+            'flows.delete',
+            'conversations.view_all',
+            'conversations.view_assigned',
+            'conversations.reply',
+            'conversations.assign',
+            'canned_responses.view',
+            'canned_responses.manage',
+            'agents.view',
+            'teams.view',
+            'teams.manage',
+            'workspaces.manage',
+        ])->get();
+        $workspaceAdmin->permissions()->sync($workspaceAdminPermissions);
 
         // Assign flow manager permissions
         $flowManagerPermissions = Permission::whereIn('name', [

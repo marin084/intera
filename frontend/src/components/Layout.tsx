@@ -14,6 +14,7 @@ import {
   LogOut,
   User,
   Settings,
+  Building2,
   PanelLeftClose,
   PanelLeftOpen,
   Menu,
@@ -28,6 +29,7 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, children }) => {
   const { user, roles, logout, hasPermission, hasRole, workspace, workspaces = [], switchWorkspace } = useAuth();
+  const isPlatformAdmin = Boolean(user?.is_platform_admin);
   const isMobile = useIsMobile();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -169,13 +171,19 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       id: 'audit',
       label: 'Auditoría',
       icon: FileText,
-      visible: hasPermission('audit_logs.view'),
+      visible: isPlatformAdmin,
     },
     {
       id: 'admin-settings',
       label: 'Ajustes del sistema',
       icon: Settings,
       visible: (typeof hasRole === 'function' && hasRole('admin')) || (typeof hasRole === 'function' && hasRole('super_admin')),
+    },
+    {
+      id: 'workspaces',
+      label: 'Workspaces',
+      icon: Building2,
+      visible: isPlatformAdmin,
     },
     {
       id: 'account',
@@ -340,18 +348,18 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
             )}
 
             <div className="topbar-heading">
-              <span className="topbar-eyebrow">Espacio de trabajo</span>
+              <span className="topbar-eyebrow">Workspace</span>
               <span className="topbar-title">
                 {navItems.find((i) => i.id === currentTab)?.label || 'Panel de Control'}
               </span>
             </div>
           </div>
 
-          {workspaces.length > 0 && (
-            <label className="workspace-switcher" title="Espacio de trabajo activo">
-              <span className="workspace-switcher-label">Espacio</span>
+          {isPlatformAdmin && workspaces.length > 0 ? (
+            <label className="workspace-switcher" title="Workspace activo">
+              <span className="workspace-switcher-label">Workspace</span>
               <select
-                aria-label="Espacio de trabajo activo"
+                aria-label="Workspace activo"
                 value={workspace?.id || ''}
                 onChange={handleWorkspaceChange}
                 disabled={workspaceSwitching}
@@ -361,7 +369,11 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
                 ))}
               </select>
             </label>
-          )}
+          ) : workspace ? (
+            <div className="workspace-context" aria-label={`Workspace activo: ${workspace.name}`}>
+              <strong>{workspace.name}</strong>
+            </div>
+          ) : null}
         </header>
 
         <div className={`content-body content-body--${currentTab}`}>

@@ -99,6 +99,7 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'is_active' => $user->is_active,
+                'is_platform_admin' => (bool) $user->is_platform_admin,
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
             ],
             'roles' => $activeMembership?->role
@@ -158,6 +159,7 @@ class AuthController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'is_active' => $user->is_active,
+                'is_platform_admin' => (bool) $user->is_platform_admin,
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
             ],
             'roles' => $activeMembership?->role ? [$activeMembership->role->name] : $user->roles->pluck('name')->values(),

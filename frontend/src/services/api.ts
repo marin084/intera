@@ -112,6 +112,37 @@ class ApiService {
     });
   }
 
+  async createWorkspace(payload: { name: string; slug?: string }) {
+    return this.request<{ message: string; data: import('../types').WorkspaceMembership }>('/workspaces', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async getWorkspaceMembers(workspaceId: string) {
+    return this.request<{ data: import('../types').WorkspaceMember[]; workspace: import('../types').WorkspaceMembership }>(`/workspaces/${workspaceId}/members`);
+  }
+
+  async addWorkspaceMember(workspaceId: string, payload: { email: string; role: string }) {
+    return this.request<{ message: string; data: import('../types').WorkspaceMember }>(`/workspaces/${workspaceId}/members`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async updateWorkspaceMember(workspaceId: string, memberId: number, payload: { role?: string; is_active?: boolean }) {
+    return this.request<{ message: string; data: import('../types').WorkspaceMember }>(`/workspaces/${workspaceId}/members/${memberId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async removeWorkspaceMember(workspaceId: string, memberId: number) {
+    return this.request<{ message: string; data: import('../types').WorkspaceMember }>(`/workspaces/${workspaceId}/members/${memberId}`, {
+      method: 'DELETE',
+    });
+  }
+
   async recordPresenceHeartbeat() {
     return this.request<{ status: string; online_agents: number; has_agents: boolean; last_seen_at: string | null }>(
       '/presence/heartbeat',

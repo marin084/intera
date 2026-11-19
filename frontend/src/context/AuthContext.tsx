@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import type { User } from '../types';
 import type { WorkspaceMembership } from '../types';
@@ -56,6 +56,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setWorkspaces(res.workspaces || []);
   };
 
+  const refreshWorkspaces = useCallback(async () => {
+    const res = await api.getWorkspaces();
+    setWorkspaces(res.data || []);
+    setWorkspace((current) => res.data?.find((item) => item.id === res.active_workspace_id) || current);
+    return res;
+  }, []);
+
   const switchWorkspace = async (workspaceId: string) => {
     await api.switchWorkspace(workspaceId);
     const res = await api.me();
@@ -79,9 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const hasPermission = (permission: string): boolean => {
-    if (roles.includes('admin')) {
-      return true;
-    }
     return permissions.includes(permission);
   };
 
@@ -104,6 +108,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         hasPermission,
         hasRole,
         switchWorkspace,
+        refreshWorkspaces,
       }}
     >
       {children}
