@@ -19,7 +19,7 @@ const roleName = (role: WorkspaceMembership['role'] | WorkspaceMember['role']) =
 );
 
 export const WorkspacesView: React.FC = () => {
-  const { hasPermission, hasRole, refreshWorkspaces } = useAuth();
+  const { user, refreshWorkspaces } = useAuth();
   const { showToast } = useToast();
   const [workspaces, setWorkspaces] = useState<WorkspaceMembership[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,7 +36,7 @@ export const WorkspacesView: React.FC = () => {
   const [error, setError] = useState('');
   const [memberToDeactivate, setMemberToDeactivate] = useState<WorkspaceMember | null>(null);
 
-  const canManage = hasPermission('workspaces.manage') || hasRole('super_admin') || hasRole('admin');
+  const canManage = Boolean(user?.is_platform_admin);
 
   const loadWorkspaces = useCallback(async () => {
     setLoading(true);

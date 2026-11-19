@@ -86,9 +86,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const hasPermission = (permission: string): boolean => {
-    if (roles.includes('admin')) {
-      return true;
-    }
     return permissions.includes(permission);
   };
 

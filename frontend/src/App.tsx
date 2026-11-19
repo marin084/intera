@@ -125,7 +125,8 @@ function parseTabPath(pathname: string): string {
 }
 
 const MainApp: React.FC = () => {
-  const { isAuthenticated, isLoading, hasPermission, hasRole } = useAuth();
+  const { isAuthenticated, isLoading, hasPermission, hasRole, user } = useAuth();
+  const isPlatformAdmin = Boolean(user?.is_platform_admin);
 
   // Keep staff presence current while the authenticated Intera app is open.
   useEffect(() => {
@@ -208,9 +209,9 @@ const MainApp: React.FC = () => {
     if (tab === 'channels') return hasPermission('channels.view') || hasPermission('channels.manage');
     if (tab === 'users') return hasPermission('users.view') || hasPermission('users.manage');
     if (tab === 'roles') return hasPermission('roles.view') || hasPermission('roles.manage');
-    if (tab === 'audit') return hasPermission('audit_logs.view');
+    if (tab === 'audit') return isPlatformAdmin;
     if (tab === 'admin-settings') return (typeof hasRole === 'function' && hasRole('admin')) || (typeof hasRole === 'function' && hasRole('super_admin'));
-    if (tab === 'workspaces') return hasPermission('workspaces.manage') || (typeof hasRole === 'function' && (hasRole('admin') || hasRole('super_admin')));
+    if (tab === 'workspaces') return isPlatformAdmin;
     return false;
   };
 

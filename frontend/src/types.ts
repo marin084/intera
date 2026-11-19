@@ -3,6 +3,7 @@ export interface User {
   name: string;
   email: string;
   is_active: boolean;
+  is_platform_admin?: boolean;
   last_login_at: string | null;
   created_at?: string;
   roles?: { id: number; name: string; display_name: string }[] | string[];

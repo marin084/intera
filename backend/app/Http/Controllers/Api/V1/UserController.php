@@ -95,7 +95,7 @@ class UserController extends Controller
             'password' => ['required', 'string', 'min:12'],
             'is_active' => ['boolean'],
             'roles' => ['array'],
-            'roles.*' => ['string', 'exists:roles,name'],
+            'roles.*' => ['string', Rule::in($this->assignableRoleNames($request->user()))],
         ]);
 
         $user = User::create([
@@ -161,7 +161,7 @@ class UserController extends Controller
             'password' => ['nullable', 'string', 'min:12'],
             'is_active' => ['sometimes', 'boolean'],
             'roles' => ['nullable', 'array'],
-            'roles.*' => ['string', 'exists:roles,name'],
+            'roles.*' => ['string', Rule::in($this->assignableRoleNames($request->user()))],
         ]);
 
         $updateData = [];
@@ -252,7 +252,7 @@ class UserController extends Controller
 
         $validated = $request->validate([
             'roles' => ['required', 'array'],
-            'roles.*' => ['string', 'exists:roles,name'],
+            'roles.*' => ['string', Rule::in($this->assignableRoleNames($request->user()))],
         ]);
 
         $this->syncWorkspaceRole($user, $validated['roles']);
@@ -297,6 +297,15 @@ class UserController extends Controller
     private function workspaceRoleNames(User $user): array
     {
         return collect($this->formatWorkspaceRoles($user))->pluck('name')->values()->all();
+    }
+
+    /** @return array<int, string> */
+    private function assignableRoleNames(?User $actor): array
+    {
+        return Role::query()
+            ->when(! $actor?->is_platform_admin, fn ($query) => $query->where('name', '!=', 'super_admin'))
+            ->pluck('name')
+            ->all();
     }
 
     private function ensureUserBelongsToCurrentWorkspace(User $user): void

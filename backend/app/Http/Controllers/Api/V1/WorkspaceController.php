@@ -126,8 +126,11 @@ class WorkspaceController extends Controller
         $this->ensureWorkspaceManager($actor, $workspace);
         $validated = $request->validate([
             'email' => ['required', 'email', 'max:255'],
-            'role' => ['required', 'string', 'in:super_admin,admin,supervisor,flow_manager,agent'],
+            'role' => ['required', 'string', 'in:admin,super_admin,supervisor,flow_manager,agent'],
         ]);
+        if ($validated['role'] === 'super_admin' && ! $actor->is_platform_admin) {
+            return response()->json(['message' => 'El rol de administrador de plataforma solo puede asignarlo otro administrador de plataforma.'], 403);
+        }
         if ($workspace->status !== 'active') {
             return response()->json(['message' => 'El workspace no está activo.'], 422);
         }
@@ -151,9 +154,12 @@ class WorkspaceController extends Controller
         $actor = $request->user();
         $this->ensureWorkspaceManager($actor, $workspace);
         $validated = $request->validate([
-            'role' => ['sometimes', 'string', 'in:super_admin,admin,supervisor,flow_manager,agent'],
+            'role' => ['sometimes', 'string', 'in:admin,super_admin,supervisor,flow_manager,agent'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
+        if (($validated['role'] ?? null) === 'super_admin' && ! $actor->is_platform_admin) {
+            return response()->json(['message' => 'El rol de administrador de plataforma solo puede asignarlo otro administrador de plataforma.'], 403);
+        }
         $membership = WorkspaceUser::query()->where('workspace_id', $workspace->id)->where('user_id', $member->id)->with(['user', 'role', 'workspace'])->first();
         if (! $membership) {
             return response()->json(['message' => 'El usuario no pertenece a este workspace.'], 404);

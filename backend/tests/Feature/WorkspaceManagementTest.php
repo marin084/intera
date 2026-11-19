@@ -77,7 +77,7 @@ class WorkspaceManagementTest extends TestCase
         $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $member->id, 'is_active' => false]);
     }
 
-    public function test_workspace_admin_only_sees_and_manages_assigned_workspace(): void
+    public function test_workspace_admin_only_sees_users_in_current_workspace_and_cannot_access_platform_sections(): void
     {
         $workspaceAdmin = User::create([
             'name' => 'Workspace Admin',
@@ -90,11 +90,56 @@ class WorkspaceManagementTest extends TestCase
         $workspaceA = Workspace::create(['name' => 'Workspace A', 'slug' => 'workspace-a', 'initial_owner_id' => $workspaceAdmin->id]);
         $workspaceB = Workspace::create(['name' => 'Workspace B', 'slug' => 'workspace-b']);
         WorkspaceUser::create(['workspace_id' => $workspaceA->id, 'user_id' => $workspaceAdmin->id, 'role_id' => $adminRole->id, 'is_active' => true]);
+        $workspaceAdmin->forceFill(['active_workspace_id' => $workspaceA->id])->save();
 
-        $response = $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/workspaces');
+        $workspaceMember = User::create([
+            'name' => 'Workspace Member',
+            'email' => 'workspace-member@example.com',
+            'password' => Hash::make('SecurePassword2026!'),
+            'is_active' => true,
+        ]);
+        $agentRole = Role::where('name', 'agent')->firstOrFail();
+        WorkspaceUser::create(['workspace_id' => $workspaceA->id, 'user_id' => $workspaceMember->id, 'role_id' => $agentRole->id, 'is_active' => true]);
 
-        $response->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', (string) $workspaceA->id);
+        $foreignMember = User::create([
+            'name' => 'Foreign Member',
+            'email' => 'foreign-member@example.com',
+            'password' => Hash::make('SecurePassword2026!'),
+            'is_active' => true,
+        ]);
+        WorkspaceUser::create(['workspace_id' => $workspaceB->id, 'user_id' => $foreignMember->id, 'role_id' => $agentRole->id, 'is_active' => true]);
+
+        $usersResponse = $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/users');
+
+        $usersResponse->assertOk()->assertJsonCount(2, 'data');
+        $this->assertSame(['workspace-admin@example.com', 'workspace-member@example.com'], collect($usersResponse->json('data'))->pluck('email')->sort()->values()->all());
+
+        $this->actingAs($workspaceAdmin, 'sanctum')->postJson('/api/v1/users', [
+            'name' => 'Created In A',
+            'email' => 'created-in-a@example.com',
+            'password' => 'SecurePassword2026!',
+            'roles' => ['super_admin'],
+        ])->assertUnprocessable()->assertJsonValidationErrors(['roles.0']);
+
+        $this->actingAs($workspaceAdmin, 'sanctum')->postJson('/api/v1/users', [
+            'name' => 'Created In A',
+            'email' => 'created-in-a@example.com',
+            'password' => 'SecurePassword2026!',
+            'roles' => ['agent'],
+        ])->assertCreated();
+
+        $created = User::where('email', 'created-in-a@example.com')->firstOrFail();
+        $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspaceA->id, 'user_id' => $created->id, 'is_active' => true]);
+        $this->assertDatabaseMissing('workspace_user', ['workspace_id' => $workspaceB->id, 'user_id' => $created->id]);
+
+        $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/workspaces')->assertForbidden();
         $this->actingAs($workspaceAdmin, 'sanctum')->getJson("/api/v1/workspaces/{$workspaceB->id}/members")->assertForbidden();
+        $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/audit-logs')->assertForbidden();
+
+        $rolesResponse = $this->actingAs($workspaceAdmin, 'sanctum')->getJson('/api/v1/roles');
+        $rolesResponse->assertOk();
+        $this->assertNotContains('super_admin', collect($rolesResponse->json('data'))->pluck('name')->all());
+        $this->assertContains('admin', collect($rolesResponse->json('data'))->pluck('name')->all());
     }
 
     public function test_workspace_cannot_remove_owner_or_last_active_super_admin(): void

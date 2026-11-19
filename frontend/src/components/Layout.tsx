@@ -29,6 +29,7 @@ interface LayoutProps {
 
 export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, children }) => {
   const { user, roles, logout, hasPermission, hasRole, workspace, workspaces = [], switchWorkspace } = useAuth();
+  const isPlatformAdmin = Boolean(user?.is_platform_admin);
   const isMobile = useIsMobile();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -170,7 +171,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       id: 'audit',
       label: 'Auditoría',
       icon: FileText,
-      visible: hasPermission('audit_logs.view'),
+      visible: isPlatformAdmin,
     },
     {
       id: 'admin-settings',
@@ -182,7 +183,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       id: 'workspaces',
       label: 'Workspaces',
       icon: Building2,
-      visible: hasPermission('workspaces.manage') || (typeof hasRole === 'function' && (hasRole('admin') || hasRole('super_admin'))),
+      visible: isPlatformAdmin,
     },
     {
       id: 'account',

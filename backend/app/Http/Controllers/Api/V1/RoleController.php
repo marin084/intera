@@ -12,7 +12,10 @@ class RoleController extends Controller
 {
     public function index(): JsonResponse
     {
-        $roles = Role::with('permissions')->get();
+        $roles = Role::query()
+            ->when(! request()->user()?->is_platform_admin, fn ($query) => $query->where('name', '!=', 'super_admin'))
+            ->with('permissions')
+            ->get();
 
         return response()->json([
             'data' => $roles->map(fn ($role) => [

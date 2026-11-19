@@ -133,7 +133,6 @@ class RolePermissionSeeder extends Seeder
             'teams.view',
             'teams.manage',
             'workspaces.manage',
-            'audit_logs.view',
         ])->get();
         $workspaceAdmin->permissions()->sync($workspaceAdminPermissions);
 
