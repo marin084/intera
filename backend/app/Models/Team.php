@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToWorkspace;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Team extends Model
 {
-    use HasUuids;
+    use BelongsToWorkspace, HasUuids;
 
     protected $appends = [
         'queue_wait_target_default_seconds',
@@ -19,6 +20,7 @@ class Team extends Model
     ];
 
     protected $fillable = [
+        'workspace_id',
         'name',
         'description',
         'is_default',

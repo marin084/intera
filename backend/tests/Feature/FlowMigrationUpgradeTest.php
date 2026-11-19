@@ -6,6 +6,7 @@ use App\Models\Flow;
 use App\Models\FlowNode;
 use App\Models\FlowVersion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Foundation\Testing\RefreshDatabaseState;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -77,5 +78,11 @@ class FlowMigrationUpgradeTest extends TestCase
 
         $this->assertEquals(250.0, $upgradedNode->fresh()->position_x);
         $this->assertEquals(500.0, $upgradedNode->fresh()->position_y);
+    }
+
+    protected function tearDown(): void
+    {
+        RefreshDatabaseState::$migrated = false;
+        parent::tearDown();
     }
 }

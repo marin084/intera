@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -26,6 +27,8 @@ class User extends Authenticatable
         'is_active',
         'last_login_at',
         'last_seen_at',
+        'active_workspace_id',
+        'is_platform_admin',
     ];
 
     /**
@@ -50,8 +53,26 @@ class User extends Authenticatable
             'last_login_at' => 'datetime',
             'last_seen_at' => 'datetime',
             'is_active' => 'boolean',
+            'is_platform_admin' => 'boolean',
             'password' => 'hashed',
         ];
+    }
+
+    public function workspaces(): BelongsToMany
+    {
+        return $this->belongsToMany(Workspace::class, 'workspace_user')
+            ->withPivot(['role_id', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function workspaceMemberships(): HasMany
+    {
+        return $this->hasMany(WorkspaceUser::class);
+    }
+
+    public function activeWorkspace(): BelongsTo
+    {
+        return $this->belongsTo(Workspace::class, 'active_workspace_id');
     }
 
     public function roles(): BelongsToMany

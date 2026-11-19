@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\BelongsToWorkspace;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,9 +11,10 @@ use Illuminate\Support\Str;
 
 class Tag extends Model
 {
-    use HasFactory, HasUuids;
+    use BelongsToWorkspace, HasFactory, HasUuids;
 
     protected $fillable = [
+        'workspace_id',
         'name',
         'slug',
         'color',
