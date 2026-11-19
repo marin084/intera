@@ -56,7 +56,7 @@ class WorkspaceController extends Controller
             ->first();
 
         if (! $membership) {
-            return response()->json(['message' => 'No tienes acceso a este espacio de trabajo.', 'code' => 'workspace_unauthorized'], 403);
+            return response()->json(['message' => 'No tienes acceso a este workspace.', 'code' => 'workspace_unauthorized'], 403);
         }
 
         $previousWorkspaceId = $user->active_workspace_id;
@@ -76,7 +76,7 @@ class WorkspaceController extends Controller
             workspaceId: $membership->workspace_id,
         );
 
-        return response()->json(['message' => 'Espacio de trabajo cambiado correctamente.', 'data' => $this->formatMembership($membership), 'active_workspace_id' => $membership->workspace_id]);
+        return response()->json(['message' => 'Workspace cambiado correctamente.', 'data' => $this->formatMembership($membership), 'active_workspace_id' => $membership->workspace_id]);
     }
 
     public function store(Request $request): JsonResponse
@@ -105,7 +105,7 @@ class WorkspaceController extends Controller
         $workspace->loadCount(['memberships as active_member_count' => fn ($query) => $query->where('is_active', true)]);
         $membership = WorkspaceUser::query()->with('role')->where('workspace_id', $workspace->id)->where('user_id', $user->id)->first();
 
-        return response()->json(['message' => 'Espacio de trabajo creado correctamente.', 'data' => $this->formatWorkspace($workspace, $membership)], 201);
+        return response()->json(['message' => 'Workspace creado correctamente.', 'data' => $this->formatWorkspace($workspace, $membership)], 201);
     }
 
     public function members(Request $request, Workspace $workspace): JsonResponse
@@ -129,7 +129,7 @@ class WorkspaceController extends Controller
             'role' => ['required', 'string', 'in:super_admin,admin,supervisor,flow_manager,agent'],
         ]);
         if ($workspace->status !== 'active') {
-            return response()->json(['message' => 'El espacio de trabajo no está activo.'], 422);
+            return response()->json(['message' => 'El workspace no está activo.'], 422);
         }
         $member = User::query()->whereRaw('LOWER(email) = ?', [strtolower(trim($validated['email']))])->first();
         if (! $member) {
@@ -142,7 +142,7 @@ class WorkspaceController extends Controller
         $membership = WorkspaceUser::updateOrCreate(['workspace_id' => $workspace->id, 'user_id' => $member->id], ['role_id' => $role->id, 'is_active' => true]);
         $membership->load(['user', 'role', 'workspace']);
         AuditLogger::log(action: 'workspace.member_added', entityType: 'WorkspaceUser', entityId: (string) $membership->id, metadata: ['member_id' => $member->id, 'role' => $role->name], userId: $actor->id, workspaceId: $workspace->id);
-        return response()->json(['message' => 'Integrante agregado al espacio de trabajo.', 'data' => $this->formatWorkspaceMember($membership)], 201);
+        return response()->json(['message' => 'Integrante agregado al workspace.', 'data' => $this->formatWorkspaceMember($membership)], 201);
     }
 
     public function updateMember(Request $request, Workspace $workspace, User $member): JsonResponse
@@ -156,7 +156,7 @@ class WorkspaceController extends Controller
         ]);
         $membership = WorkspaceUser::query()->where('workspace_id', $workspace->id)->where('user_id', $member->id)->with(['user', 'role', 'workspace'])->first();
         if (! $membership) {
-            return response()->json(['message' => 'El usuario no pertenece a este espacio de trabajo.'], 404);
+            return response()->json(['message' => 'El usuario no pertenece a este workspace.'], 404);
         }
         $nextRole = $validated['role'] ?? $membership->role?->name;
         $nextActive = array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : $membership->is_active;
@@ -224,7 +224,7 @@ class WorkspaceController extends Controller
 
     private function ensurePlatformAdministrator(User $user): void
     {
-        abort_unless($this->canManageAnyWorkspace($user), 403, 'No tienes permiso para administrar espacios de trabajo.');
+        abort_unless($this->canManageAnyWorkspace($user), 403, 'No tienes permiso para administrar workspaces.');
     }
 
     private function ensureWorkspaceManager(User $user, Workspace $workspace): void
@@ -233,7 +233,7 @@ class WorkspaceController extends Controller
             return;
         }
         $isManager = WorkspaceUser::query()->where('workspace_id', $workspace->id)->where('user_id', $user->id)->where('is_active', true)->whereHas('role', fn ($query) => $query->whereIn('name', ['super_admin', 'admin']))->exists();
-        abort_unless($isManager, 403, 'No tienes permiso para administrar este espacio de trabajo.');
+        abort_unless($isManager, 403, 'No tienes permiso para administrar este workspace.');
     }
 
     private function resolveUniqueSlug(string $value): string
@@ -251,7 +251,7 @@ class WorkspaceController extends Controller
     {
         $isOwner = (int) $workspace->initial_owner_id === (int) $membership->user_id;
         if ($isOwner && (! $nextActive || $nextRole !== 'super_admin')) {
-            abort(422, 'El propietario inicial debe conservar acceso activo como administrador.');
+            abort(422, 'El propietario inicial debe conservar acceso activo como administrador del workspace.');
         }
 
         $currentlySoleAdmin = $membership->is_active
@@ -259,7 +259,7 @@ class WorkspaceController extends Controller
             && (! $nextActive || $nextRole !== 'super_admin')
             && ! $workspace->memberships()->where('is_active', true)->where('role_id', $membership->role_id)->where('id', '!=', $membership->id)->exists();
         if ($currentlySoleAdmin) {
-            abort(422, 'El espacio de trabajo debe conservar al menos un administrador activo.');
+            abort(422, 'El workspace debe conservar al menos un administrador activo.');
         }
     }
 }

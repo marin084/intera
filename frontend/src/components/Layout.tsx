@@ -180,7 +180,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
     },
     {
       id: 'workspaces',
-      label: 'Espacios de trabajo',
+      label: 'Workspaces',
       icon: Building2,
       visible: hasPermission('workspaces.manage') || (typeof hasRole === 'function' && (hasRole('admin') || hasRole('super_admin'))),
     },
@@ -347,7 +347,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
             )}
 
             <div className="topbar-heading">
-              <span className="topbar-eyebrow">Espacio de trabajo</span>
+              <span className="topbar-eyebrow">Workspace</span>
               <span className="topbar-title">
                 {navItems.find((i) => i.id === currentTab)?.label || 'Panel de Control'}
               </span>
@@ -355,10 +355,10 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
           </div>
 
           {workspaces.length > 0 && (
-            <label className="workspace-switcher" title="Espacio de trabajo activo">
-              <span className="workspace-switcher-label">Espacio</span>
+            <label className="workspace-switcher" title="Workspace activo">
+              <span className="workspace-switcher-label">Workspace</span>
               <select
-                aria-label="Espacio de trabajo activo"
+                aria-label="Workspace activo"
                 value={workspace?.id || ''}
                 onChange={handleWorkspaceChange}
                 disabled={workspaceSwitching}

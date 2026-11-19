@@ -85,7 +85,7 @@ class WorkspaceManagementTest extends TestCase
 
         $response = $this->actingAs($owner, 'sanctum')->deleteJson("/api/v1/workspaces/{$workspace->id}/members/{$owner->id}");
 
-        $response->assertStatus(422)->assertJsonPath('message', 'El propietario inicial debe conservar acceso activo como administrador.');
+        $response->assertStatus(422)->assertJsonPath('message', 'El propietario inicial debe conservar acceso activo como administrador del workspace.');
         $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $owner->id, 'is_active' => true]);
     }
 
