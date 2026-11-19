@@ -371,7 +371,6 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
             </label>
           ) : workspace ? (
             <div className="workspace-context" aria-label={`Workspace activo: ${workspace.name}`}>
-              <span className="workspace-switcher-label">Workspace</span>
               <strong>{workspace.name}</strong>
             </div>
           ) : null}
