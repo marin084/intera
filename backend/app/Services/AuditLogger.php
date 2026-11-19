@@ -33,7 +33,8 @@ class AuditLogger
         ?string $entityType = null,
         ?string $entityId = null,
         array $metadata = [],
-        ?int $userId = null
+        ?int $userId = null,
+        ?string $workspaceId = null
     ): AuditLog {
         $user = auth()->user();
         $effectiveUserId = $userId ?? $user?->id;
@@ -41,6 +42,8 @@ class AuditLogger
         $sanitizedMetadata = self::sanitize($metadata);
 
         return AuditLog::create([
+            'workspace_id' => $workspaceId
+                ?? (app()->bound('current_workspace_id') ? app('current_workspace_id') : null),
             'user_id' => $effectiveUserId,
             'action' => $action,
             'entity_type' => $entityType,

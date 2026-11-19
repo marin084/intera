@@ -294,6 +294,33 @@ body {
   letter-spacing: -0.02em;
 }
 
+.workspace-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.workspace-switcher select {
+  min-width: 170px;
+  max-width: 260px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  padding: 0.45rem 2rem 0.45rem 0.8rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.workspace-switcher select:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .content-body {
   flex: 1;
   padding: 1.5rem;
@@ -1905,6 +1932,16 @@ body.zen-mode .flow-workspace {
 
   .topbar-desktop-only {
     display: none !important;
+  }
+
+  .workspace-switcher-label {
+    display: none;
+  }
+
+  .workspace-switcher select {
+    min-width: 120px;
+    max-width: 150px;
+    padding-left: 0.65rem;
   }
 
   .content-body {

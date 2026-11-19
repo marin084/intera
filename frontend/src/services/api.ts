@@ -67,6 +67,8 @@ class ApiService {
       user: any;
       roles: string[];
       permissions: string[];
+      workspace?: import('../types').WorkspaceMembership | null;
+      workspaces?: import('../types').WorkspaceMembership[];
       message?: string;
     }>('/auth/login', {
       method: 'POST',
@@ -87,7 +89,27 @@ class ApiService {
       user: any;
       roles: string[];
       permissions: string[];
+      workspace?: import('../types').WorkspaceMembership | null;
+      workspaces?: import('../types').WorkspaceMembership[];
     }>('/auth/me');
+  }
+
+  async getWorkspaces() {
+    return this.request<{
+      data: import('../types').WorkspaceMembership[];
+      active_workspace_id: string | null;
+    }>('/workspaces');
+  }
+
+  async switchWorkspace(workspace_id: string) {
+    return this.request<{
+      message: string;
+      data: import('../types').WorkspaceMembership;
+      active_workspace_id: string;
+    }>('/workspaces/switch', {
+      method: 'POST',
+      body: JSON.stringify({ workspace_id }),
+    });
   }
 
   async recordPresenceHeartbeat() {

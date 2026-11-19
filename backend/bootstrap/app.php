@@ -4,6 +4,7 @@ use App\Http\Middleware\AuthenticateWebchatVisitor;
 use App\Http\Middleware\CheckPermission;
 use App\Http\Middleware\CheckRole;
 use App\Http\Middleware\SecurityHeaders;
+use App\Http\Middleware\ResolveTenantContext;
 use App\Http\Middleware\WebchatCors;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'permission' => CheckPermission::class,
             'role' => CheckRole::class,
             'webchat.visitor' => AuthenticateWebchatVisitor::class,
+            'tenant' => ResolveTenantContext::class,
         ]);
 
         $middleware->append(SecurityHeaders::class);

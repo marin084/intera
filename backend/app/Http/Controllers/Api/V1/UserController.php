@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\WorkspaceUser;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -16,7 +17,14 @@ class UserController extends Controller
 {
     public function index(Request $request): JsonResponse
     {
-        $users = User::with(['roles.permissions', 'channels:id,name,type,is_active'])->orderBy('id', 'desc')->get();
+        $workspaceId = app('current_workspace_id');
+        $users = User::query()
+            ->whereHas('workspaceMemberships', fn ($query) => $query
+                ->where('workspace_id', $workspaceId)
+                ->where('is_active', true))
+            ->with(['roles.permissions', 'channels:id,name,type,is_active'])
+            ->orderBy('id', 'desc')
+            ->get();
 
         return response()->json([
             'data' => $users->map(fn ($user) => [
@@ -60,6 +68,11 @@ class UserController extends Controller
             return response()->json(['message' => 'El superadministrador conserva acceso a todos los canales.'], 422);
         }
 
+        $allowedChannelIds = Channel::query()->whereIn('id', $validated['channel_ids'])->pluck('id');
+        if ($allowedChannelIds->count() !== count($validated['channel_ids'])) {
+            return response()->json(['message' => 'Uno o más canales no pertenecen al espacio de trabajo actual.'], 422);
+        }
+
         $user->channels()->sync($validated['channel_ids']);
         $user->load('channels:id,name,type,is_active');
 
@@ -97,7 +110,16 @@ class UserController extends Controller
         if (! empty($validated['roles'])) {
             $roleIds = Role::whereIn('name', $validated['roles'])->pluck('id');
             $user->roles()->sync($roleIds);
+
+            if (app()->bound('current_workspace_id')) {
+                WorkspaceUser::query()
+                    ->where('workspace_id', app('current_workspace_id'))
+                    ->where('user_id', $user->id)
+                    ->update(['role_id' => $roleIds->first()]);
+            }
         }
+
+        $this->ensureWorkspaceMembership($user, $validated['roles'] ?? []);
 
         $user->load('roles');
 
@@ -175,6 +197,13 @@ class UserController extends Controller
         if (array_key_exists('roles', $validated)) {
             $roleIds = Role::whereIn('name', $validated['roles'] ?? [])->pluck('id');
             $user->roles()->sync($roleIds);
+
+            if (app()->bound('current_workspace_id') && $roleIds->isNotEmpty()) {
+                WorkspaceUser::query()
+                    ->where('workspace_id', app('current_workspace_id'))
+                    ->where('user_id', $user->id)
+                    ->update(['role_id' => $roleIds->first()]);
+            }
         }
 
         $user->load('roles');
@@ -243,6 +272,12 @@ class UserController extends Controller
 
         $roleIds = Role::whereIn('name', $validated['roles'])->pluck('id');
         $user->roles()->sync($roleIds);
+        if (app()->bound('current_workspace_id') && $roleIds->isNotEmpty()) {
+            WorkspaceUser::query()
+                ->where('workspace_id', app('current_workspace_id'))
+                ->where('user_id', $user->id)
+                ->update(['role_id' => $roleIds->first()]);
+        }
         $user->load('roles');
 
         AuditLogger::log(
@@ -259,5 +294,28 @@ class UserController extends Controller
                 'roles' => $user->roles->pluck('name'),
             ],
         ]);
+    }
+
+    private function ensureWorkspaceMembership(User $user, array $roleNames): void
+    {
+        if (! app()->bound('current_workspace_id')) {
+            return;
+        }
+
+        $roleId = Role::query()
+            ->when($roleNames !== [], fn ($query) => $query->whereIn('name', $roleNames))
+            ->orderByRaw("CASE name WHEN 'super_admin' THEN 1 WHEN 'admin' THEN 2 WHEN 'supervisor' THEN 3 WHEN 'flow_manager' THEN 4 WHEN 'agent' THEN 5 ELSE 99 END")
+            ->value('id');
+
+        if (! $roleId) {
+            $roleId = Role::where('name', 'agent')->value('id');
+        }
+
+        if ($roleId) {
+            WorkspaceUser::query()->updateOrCreate(
+                ['workspace_id' => app('current_workspace_id'), 'user_id' => $user->id],
+                ['role_id' => $roleId, 'is_active' => true]
+            );
+        }
     }
 }

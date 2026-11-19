@@ -109,6 +109,26 @@ class User extends Authenticatable
         return $this->teams()->where('teams.id', $teamId)->exists();
     }
 
+    /**
+     * Return the active membership for an explicit or request-bound workspace.
+     * Permission checks use this method so legacy role_user assignments cannot
+     * leak into another tenant once a workspace context is present.
+     */
+    public function workspaceMembership(?string $workspaceId = null): ?WorkspaceUser
+    {
+        $workspaceId ??= app()->bound('current_workspace_id') ? app('current_workspace_id') : null;
+        if (! $workspaceId) {
+            return null;
+        }
+
+        return $this->workspaceMemberships()
+            ->with(['workspace', 'role.permissions'])
+            ->where('workspace_id', $workspaceId)
+            ->where('is_active', true)
+            ->whereHas('workspace', fn ($query) => $query->where('status', 'active'))
+            ->first();
+    }
+
     public function canAccessChannel(string $channelId): bool
     {
         if ($this->hasRole('super_admin')) {
@@ -122,16 +142,38 @@ class User extends Authenticatable
         return $this->channels()->where('channels.id', $channelId)->exists();
     }
 
-    public function hasRole(string|array $roles): bool
+    public function hasRole(string|array $roles, ?string $workspaceId = null): bool
     {
         $roleList = is_array($roles) ? $roles : [$roles];
+
+        $contextWorkspaceId = $workspaceId
+            ?? (app()->bound('current_workspace_id') ? app('current_workspace_id') : null);
+        if ($contextWorkspaceId) {
+            $membership = $this->workspaceMembership($contextWorkspaceId);
+
+            return $membership?->role !== null
+                && in_array($membership->role->name, $roleList, true);
+        }
 
         return $this->roles->pluck('name')->intersect($roleList)->isNotEmpty();
     }
 
-    public function hasPermission(string $permission): bool
+    public function hasPermission(string $permission, ?string $workspaceId = null): bool
     {
-        // Super admin has all permissions
+        $contextWorkspaceId = $workspaceId
+            ?? (app()->bound('current_workspace_id') ? app('current_workspace_id') : null);
+        if ($contextWorkspaceId) {
+            $membership = $this->workspaceMembership($contextWorkspaceId);
+            if (! $membership?->role) {
+                return false;
+            }
+
+            return $membership->role->name === 'super_admin'
+                || $membership->role->permissions->contains('name', $permission);
+        }
+
+        // Super admin has all permissions outside a tenant context (commands,
+        // migrations and the login response).
         if ($this->hasRole('super_admin')) {
             return true;
         }
@@ -142,8 +184,20 @@ class User extends Authenticatable
             ->contains($permission);
     }
 
-    public function hasAnyPermission(array $permissions): bool
+    public function hasAnyPermission(array $permissions, ?string $workspaceId = null): bool
     {
+        $contextWorkspaceId = $workspaceId
+            ?? (app()->bound('current_workspace_id') ? app('current_workspace_id') : null);
+        if ($contextWorkspaceId) {
+            $membership = $this->workspaceMembership($contextWorkspaceId);
+            if (! $membership?->role) {
+                return false;
+            }
+
+            return $membership->role->name === 'super_admin'
+                || $membership->role->permissions->pluck('name')->intersect($permissions)->isNotEmpty();
+        }
+
         if ($this->hasRole('super_admin')) {
             return true;
         }
@@ -156,8 +210,21 @@ class User extends Authenticatable
         return $userPermissions->intersect($permissions)->isNotEmpty();
     }
 
-    public function allPermissions(): Collection
+    public function allPermissions(?string $workspaceId = null): Collection
     {
+        $contextWorkspaceId = $workspaceId
+            ?? (app()->bound('current_workspace_id') ? app('current_workspace_id') : null);
+        if ($contextWorkspaceId) {
+            $membership = $this->workspaceMembership($contextWorkspaceId);
+            if (! $membership?->role) {
+                return collect();
+            }
+
+            return $membership->role->name === 'super_admin'
+                ? Permission::query()->get()
+                : $membership->role->permissions->unique('id')->values();
+        }
+
         if ($this->hasRole('super_admin')) {
             return Permission::all();
         }

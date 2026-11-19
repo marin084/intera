@@ -22,8 +22,10 @@ use App\Http\Controllers\Api\V1\SavedFunnelController;
 use App\Http\Controllers\Api\V1\TagController;
 use App\Http\Controllers\Api\V1\TeamController;
 use App\Http\Controllers\Api\V1\UserController;
+use App\Http\Controllers\Api\V1\WorkspaceController;
 use App\Http\Controllers\HealthController;
 use App\Http\Middleware\EnsureUserIsActive;
+use App\Http\Middleware\ResolveTenantContext;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
 
@@ -100,7 +102,7 @@ Route::prefix('v1')->group(function () {
     });
 
     // Broadcasting Auth for Authenticated Users (Admin / Operator / Agent)
-    Broadcast::routes(['middleware' => ['auth:sanctum', EnsureUserIsActive::class]]);
+    Broadcast::routes(['middleware' => ['auth:sanctum', EnsureUserIsActive::class, ResolveTenantContext::class]]);
 
     // Authenticated Routes
     Route::middleware(['auth:sanctum', EnsureUserIsActive::class])->group(function () {
@@ -108,6 +110,13 @@ Route::prefix('v1')->group(function () {
         Route::post('/auth/logout', [AuthController::class, 'logout']);
         Route::get('/auth/me', [AuthController::class, 'me']);
         Route::put('/auth/password', [AuthController::class, 'changePassword']);
+
+        // Workspace context is selected independently of business routes so the
+        // client can load the selector and switch workspaces safely.
+        Route::get('/workspaces', [WorkspaceController::class, 'index']);
+        Route::post('/workspaces/switch', [WorkspaceController::class, 'switchWorkspace']);
+
+        Route::middleware(ResolveTenantContext::class)->group(function () {
         Route::post('/presence/heartbeat', [PresenceController::class, 'heartbeat']);
 
         // Administrator-only system settings
@@ -224,5 +233,6 @@ Route::prefix('v1')->group(function () {
 
         // Audit Logs
         Route::get('/audit-logs', [AuditLogController::class, 'index'])->middleware('permission:audit_logs.view');
+        });
     });
 });
