@@ -44,10 +44,10 @@ class ConversationLifecycleService
                 throw new AccessDeniedHttpException('No perteneces al equipo o no tienes acceso al canal de esta conversación.');
             }
 
-            $lockedUser = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-            if (! app(ConversationAssignmentService::class)->canAcceptMoreConversations($lockedUser)) {
-                throw ValidationException::withMessages(['capacity' => 'Llegaste al máximo de conversaciones activas para tu rol.']);
-            }
+            // A manual claim is an explicit action by the agent. The role capacity
+            // controls automatic routing only, so a zero auto-assignment capacity
+            // must not prevent the agent from taking a conversation intentionally.
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
             $locked->update([
                 'assigned_user_id' => $user->id,

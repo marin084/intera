@@ -224,6 +224,29 @@ class InboxOperabilityTest extends TestCase
         });
     }
 
+    public function test_zero_auto_assignment_capacity_does_not_block_manual_claim(): void
+    {
+        // Administrators have no automatic-routing capacity by design, but can
+        // still take a conversation explicitly when they choose to handle it.
+        $this->addToDefaultTeam($this->admin);
+
+        $conv = Conversation::create([
+            'channel_id' => $this->channel->id,
+            'team_id' => $this->team->id,
+            'contact_id' => $this->contact->id,
+            'status' => ConversationStatus::WAITING_AGENT,
+            'assigned_user_id' => null,
+            'started_at' => now(),
+        ]);
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->postJson("/api/v1/conversations/{$conv->id}/claim");
+
+        $response->assertStatus(200)
+            ->assertJsonPath('data.assigned_user_id', $this->admin->id)
+            ->assertJsonPath('data.status', 'assigned');
+    }
+
     public function test_claim_conflict_prevents_double_assignment_and_returns_409(): void
     {
         Event::fake([ConversationAssigned::class]);
