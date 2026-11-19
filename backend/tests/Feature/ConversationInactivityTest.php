@@ -326,6 +326,130 @@ class ConversationInactivityTest extends TestCase
         Event::assertNotDispatched(ConversationClosed::class);
     }
 
+    public function test_waiting_for_agent_never_starts_inactivity_timer_from_handoff_message(): void
+    {
+        Event::fake([MessageCreated::class, ConversationUpdated::class, ConversationClosed::class]);
+
+        $conversation = Conversation::create([
+            'channel_id' => $this->webchatChannel->id,
+            'contact_id' => $this->contact->id,
+            'status' => ConversationStatus::WAITING_AGENT,
+            'metadata' => [],
+            'started_at' => now()->subMinutes(30),
+            'last_message_at' => now()->subMinutes(20),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'direction' => MessageDirection::OUTBOUND,
+            'sender_type' => MessageSenderType::BOT,
+            'message_type' => MessageType::TEXT,
+            'content' => 'Te comunicaremos con un ejecutivo.',
+            'sent_at' => now()->subMinutes(20),
+        ]);
+
+        $this->artisan('conversations:check-inactivity')
+            ->assertSuccessful();
+
+        $conversation->refresh();
+        $this->assertSame(ConversationStatus::WAITING_AGENT, $conversation->status);
+        $this->assertNull($conversation->closed_at);
+        $this->assertArrayNotHasKey('inactivity_warned_at', $conversation->metadata ?? []);
+        Event::assertNotDispatched(MessageCreated::class);
+        Event::assertNotDispatched(ConversationClosed::class);
+    }
+
+    public function test_assigned_conversation_waits_for_agent_reply_before_starting_inactivity_timer(): void
+    {
+        Event::fake([MessageCreated::class, ConversationUpdated::class, ConversationClosed::class]);
+
+        $conversation = Conversation::create([
+            'channel_id' => $this->webchatChannel->id,
+            'contact_id' => $this->contact->id,
+            'status' => ConversationStatus::ASSIGNED,
+            'assigned_user_id' => $this->agent->id,
+            'metadata' => [],
+            'started_at' => now()->subMinutes(30),
+            'last_message_at' => now()->subMinutes(20),
+        ]);
+
+        ConversationAssignment::create([
+            'conversation_id' => $conversation->id,
+            'assigned_user_id' => $this->agent->id,
+            'assigned_by_user_id' => $this->agent->id,
+            'assigned_at' => now()->subMinutes(20),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'direction' => MessageDirection::OUTBOUND,
+            'sender_type' => MessageSenderType::BOT,
+            'message_type' => MessageType::TEXT,
+            'content' => 'Te comunicaremos con un ejecutivo.',
+            'sent_at' => now()->subMinutes(20),
+        ]);
+
+        $this->artisan('conversations:check-inactivity')
+            ->assertSuccessful();
+
+        $conversation->refresh();
+        $this->assertSame(ConversationStatus::ASSIGNED, $conversation->status);
+        $this->assertNull($conversation->closed_at);
+        $this->assertArrayNotHasKey('inactivity_warned_at', $conversation->metadata ?? []);
+        Event::assertNotDispatched(MessageCreated::class);
+        Event::assertNotDispatched(ConversationClosed::class);
+    }
+
+    public function test_assigned_conversation_stops_inactivity_when_customer_replies(): void
+    {
+        Event::fake([MessageCreated::class, ConversationUpdated::class, ConversationClosed::class]);
+
+        $conversation = Conversation::create([
+            'channel_id' => $this->webchatChannel->id,
+            'contact_id' => $this->contact->id,
+            'status' => ConversationStatus::ASSIGNED,
+            'assigned_user_id' => $this->agent->id,
+            'metadata' => [],
+            'started_at' => now()->subMinutes(30),
+            'last_message_at' => now()->subMinutes(10),
+        ]);
+
+        ConversationAssignment::create([
+            'conversation_id' => $conversation->id,
+            'assigned_user_id' => $this->agent->id,
+            'assigned_by_user_id' => $this->agent->id,
+            'assigned_at' => now()->subMinutes(20),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'direction' => MessageDirection::OUTBOUND,
+            'sender_type' => MessageSenderType::AGENT,
+            'message_type' => MessageType::TEXT,
+            'content' => 'Hola, ya estoy revisando tu solicitud.',
+            'sent_at' => now()->subMinutes(20),
+        ]);
+
+        Message::create([
+            'conversation_id' => $conversation->id,
+            'direction' => MessageDirection::INBOUND,
+            'sender_type' => MessageSenderType::CONTACT,
+            'message_type' => MessageType::TEXT,
+            'content' => 'Gracias, quedo atento.',
+            'sent_at' => now()->subMinutes(10),
+        ]);
+
+        $this->artisan('conversations:check-inactivity')
+            ->assertSuccessful();
+
+        $conversation->refresh();
+        $this->assertSame(ConversationStatus::ASSIGNED, $conversation->status);
+        $this->assertNull($conversation->closed_at);
+        $this->assertArrayNotHasKey('inactivity_warned_at', $conversation->metadata ?? []);
+        Event::assertNotDispatched(MessageCreated::class);
+        Event::assertNotDispatched(ConversationClosed::class);
+    }
+
     public function test_inbound_response_after_warning_resets_inactivity_warned_at(): void
     {
         $conversation = Conversation::create([
