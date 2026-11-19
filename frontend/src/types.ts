@@ -19,6 +19,19 @@ export interface WorkspaceMembership {
   status: string;
   role?: string | { id: number; name: string; display_name: string } | null;
   is_active?: boolean;
+  initial_owner_id?: number | null;
+  member_count?: number | null;
+  can_switch?: boolean;
+}
+
+export interface WorkspaceMember {
+  id: number;
+  membership_id: number;
+  name: string;
+  email: string;
+  role?: { id: number; name: string; display_name: string } | null;
+  is_active: boolean;
+  is_owner: boolean;
 }
 
 export interface Team {

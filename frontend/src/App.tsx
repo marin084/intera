@@ -16,6 +16,7 @@ const TeamsView = lazy(() => import('./views/TeamsView').then((m) => ({ default:
 const AuditLogsView = lazy(() => import('./views/AuditLogsView').then((m) => ({ default: m.AuditLogsView })));
 const AccountView = lazy(() => import('./views/AccountView').then((m) => ({ default: m.AccountView })));
 const AdminSettingsView = lazy(() => import('./views/AdminSettingsView').then((m) => ({ default: m.AdminSettingsView })));
+const WorkspacesView = lazy(() => import('./views/WorkspacesView').then((m) => ({ default: m.WorkspacesView })));
 const DashboardsView = lazy(() => import('./views/Analytics/DashboardsView').then((m) => ({ default: m.DashboardsView })));
 const FlowEditor = lazy(() => import('./components/flow-editor/FlowEditor').then((m) => ({ default: m.FlowEditor })));
 
@@ -114,6 +115,7 @@ const TAB_PATHS: Record<string, string> = {
   roles: '/roles',
   audit: '/audit',
   'admin-settings': '/settings',
+  workspaces: '/workspaces',
   account: '/account',
 };
 
@@ -208,6 +210,7 @@ const MainApp: React.FC = () => {
     if (tab === 'roles') return hasPermission('roles.view') || hasPermission('roles.manage');
     if (tab === 'audit') return hasPermission('audit_logs.view');
     if (tab === 'admin-settings') return (typeof hasRole === 'function' && hasRole('admin')) || (typeof hasRole === 'function' && hasRole('super_admin'));
+    if (tab === 'workspaces') return hasPermission('workspaces.manage') || (typeof hasRole === 'function' && (hasRole('admin') || hasRole('super_admin')));
     return false;
   };
 
@@ -327,6 +330,8 @@ const MainApp: React.FC = () => {
         return <AccountView />;
       case 'admin-settings':
         return <AdminSettingsView />;
+      case 'workspaces':
+        return <WorkspacesView />;
       default:
         return <ConversationsView />;
     }

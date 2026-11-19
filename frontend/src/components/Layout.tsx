@@ -14,6 +14,7 @@ import {
   LogOut,
   User,
   Settings,
+  Building2,
   PanelLeftClose,
   PanelLeftOpen,
   Menu,
@@ -176,6 +177,12 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       label: 'Ajustes del sistema',
       icon: Settings,
       visible: (typeof hasRole === 'function' && hasRole('admin')) || (typeof hasRole === 'function' && hasRole('super_admin')),
+    },
+    {
+      id: 'workspaces',
+      label: 'Espacios de trabajo',
+      icon: Building2,
+      visible: hasPermission('workspaces.manage') || (typeof hasRole === 'function' && (hasRole('admin') || hasRole('super_admin'))),
     },
     {
       id: 'account',

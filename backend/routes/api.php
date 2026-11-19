@@ -115,6 +115,11 @@ Route::prefix('v1')->group(function () {
         // client can load the selector and switch workspaces safely.
         Route::get('/workspaces', [WorkspaceController::class, 'index']);
         Route::post('/workspaces/switch', [WorkspaceController::class, 'switchWorkspace']);
+        Route::post('/workspaces', [WorkspaceController::class, 'store']);
+        Route::get('/workspaces/{workspace}/members', [WorkspaceController::class, 'members']);
+        Route::post('/workspaces/{workspace}/members', [WorkspaceController::class, 'addMember']);
+        Route::patch('/workspaces/{workspace}/members/{member}', [WorkspaceController::class, 'updateMember'])->whereNumber('member');
+        Route::delete('/workspaces/{workspace}/members/{member}', [WorkspaceController::class, 'removeMember'])->whereNumber('member');
 
         Route::middleware(ResolveTenantContext::class)->group(function () {
         Route::post('/presence/heartbeat', [PresenceController::class, 'heartbeat']);

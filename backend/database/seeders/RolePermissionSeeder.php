@@ -48,6 +48,9 @@ class RolePermissionSeeder extends Seeder
             ['name' => 'teams.view', 'display_name' => 'Ver equipos y colas propias', 'module' => 'teams'],
             ['name' => 'teams.manage', 'display_name' => 'Administrar equipos y rutas', 'module' => 'teams'],
 
+            // Workspaces / tenants
+            ['name' => 'workspaces.manage', 'display_name' => 'Administrar espacios de trabajo', 'module' => 'workspaces'],
+
             // Audit & System
             ['name' => 'audit_logs.view', 'display_name' => 'Consultar logs de auditoría', 'module' => 'audit'],
             ['name' => 'instance.configure', 'display_name' => 'Configurar parámetros de la instancia', 'module' => 'system'],
