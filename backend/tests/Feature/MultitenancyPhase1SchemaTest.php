@@ -415,6 +415,148 @@ class MultitenancyPhase1SchemaTest extends TestCase
         $this->assertFalse(Schema::hasColumn('messages', 'workspace_id'));
     }
 
+    /** 15. Verificación de que workspace_id no tiene default en las 9 tablas directas y falla al omitirse */
+    public function test_15_workspace_id_columns_have_no_defaults_and_fail_on_missing_insert(): void
+    {
+        $tenantTables = [
+            'channels' => [
+                'id' => (string) Str::uuid(),
+                'name' => 'Canal Sin Workspace',
+                'type' => 'webchat',
+            ],
+            'contacts' => [
+                'id' => (string) Str::uuid(),
+                'display_name' => 'Contacto Sin Workspace',
+            ],
+            'flows' => [
+                'id' => (string) Str::uuid(),
+                'name' => 'Flujo Sin Workspace',
+                'status' => 'draft',
+            ],
+            'conversations' => [
+                'id' => (string) Str::uuid(),
+                'channel_id' => (string) Str::uuid(),
+                'contact_id' => (string) Str::uuid(),
+                'status' => 'active',
+            ],
+            'teams' => [
+                'id' => (string) Str::uuid(),
+                'name' => 'Equipo Sin Workspace',
+            ],
+            'tags' => [
+                'id' => (string) Str::uuid(),
+                'name' => 'Tag Sin Workspace',
+                'slug' => 'tag-sin-ws',
+            ],
+            'canned_responses' => [
+                'id' => (string) Str::uuid(),
+                'title' => 'Respuesta Sin Workspace',
+                'shortcut' => 'resp_sin_ws',
+                'content' => 'Texto',
+            ],
+            'saved_funnels' => [
+                'id' => (string) Str::uuid(),
+                'flow_id' => (string) Str::uuid(),
+                'name' => 'Funnel Sin Workspace',
+                'steps' => json_encode([]),
+            ],
+            'agent_presence_sessions' => [
+                'user_id' => 1,
+                'session_key' => str_repeat('a', 64),
+                'started_at' => now(),
+                'last_heartbeat_at' => now(),
+            ],
+        ];
+
+        foreach ($tenantTables as $tableName => $payload) {
+            // Verificar ausencia de dflt_value en SQLite
+            if (DB::getDriverName() === 'sqlite') {
+                $columns = collect(DB::select("PRAGMA table_info('{$tableName}')"));
+                $wsCol = $columns->firstWhere('name', 'workspace_id');
+
+                $this->assertNotNull($wsCol, "Columna workspace_id no encontrada en tabla {$tableName}");
+                $this->assertSame(1, (int) $wsCol->notnull, "La columna workspace_id en {$tableName} debe ser NOT NULL");
+                $this->assertNull($wsCol->dflt_value, "La columna workspace_id en {$tableName} NO debe tener valor predeterminado (dflt_value)");
+            }
+
+            // Inserción directa sin workspace_id debe fallar por NOT NULL constraint
+            $failedAsExpected = false;
+            try {
+                DB::table($tableName)->insert($payload);
+            } catch (QueryException $e) {
+                $failedAsExpected = true;
+                $this->assertStringContainsStringIgnoringCase('NOT NULL', $e->getMessage());
+            }
+
+            $this->assertTrue($failedAsExpected, "La inserción en {$tableName} sin workspace_id debió fallar por NOT NULL constraint");
+        }
+    }
+
+    /** 16. Verificación de jerarquía de selección del propietario inicial */
+    public function test_16_initial_owner_selection_priority_by_role_hierarchy(): void
+    {
+        DB::table('workspaces')->delete();
+        DB::table('role_user')->delete();
+        DB::table('users')->delete();
+
+        $agentUser = User::factory()->create(['id' => 10, 'name' => 'Agent User']);
+        $supervisorUser = User::factory()->create(['id' => 20, 'name' => 'Supervisor User']);
+        $adminUser = User::factory()->create(['id' => 30, 'name' => 'Admin User']);
+        $superAdminUser = User::factory()->create(['id' => 40, 'name' => 'Super Admin User']);
+
+        $agentRole = Role::where('name', 'agent')->firstOrFail();
+        $supervisorRole = Role::where('name', 'supervisor')->firstOrFail();
+        $adminRole = Role::firstOrCreate(['name' => 'admin'], ['display_name' => 'Admin']);
+        $superAdminRole = Role::where('name', 'super_admin')->firstOrFail();
+
+        $agentUser->roles()->attach($agentRole);
+        $supervisorUser->roles()->attach($supervisorRole);
+        $adminUser->roles()->attach($adminRole);
+        $superAdminUser->roles()->attach($superAdminRole);
+
+        // Escenario A: super_admin (ID 40) debe ganar sobre usuarios con menor ID pero menor jerarquía
+        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        Artisan::call('migrate', ['--force' => true]);
+
+        $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
+        $this->assertNotNull($workspace);
+        $this->assertSame($superAdminUser->id, (int) $workspace->initial_owner_id);
+
+        // Escenario B: sin super_admin, debe ganar admin (ID 30)
+        DB::table('workspaces')->delete();
+        $superAdminUser->roles()->detach();
+
+        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        Artisan::call('migrate', ['--force' => true]);
+
+        $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
+        $this->assertSame($adminUser->id, (int) $workspace->initial_owner_id);
+
+        // Escenario C: sin admin ni super_admin, gana supervisor (ID 20)
+        DB::table('workspaces')->delete();
+        $adminUser->roles()->detach();
+
+        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        Artisan::call('migrate', ['--force' => true]);
+
+        $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
+        $this->assertSame($supervisorUser->id, (int) $workspace->initial_owner_id);
+
+        // Escenario D: sin roles en ningún usuario, fallback al primer usuario existente por ID (ID 10)
+        DB::table('workspaces')->delete();
+        $supervisorUser->roles()->detach();
+        $agentUser->roles()->detach();
+
+        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        Artisan::call('migrate', ['--force' => true]);
+
+        $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
+        $this->assertSame($agentUser->id, (int) $workspace->initial_owner_id);
+
+        RefreshDatabaseState::$migrated = false;
+        Artisan::call('migrate', ['--force' => true]);
+    }
+
     /** 14. Verificación de entorno PostgreSQL (si está disponible o reporte de estado) */
     public function test_14_postgresql_migration_environment_check(): void
     {

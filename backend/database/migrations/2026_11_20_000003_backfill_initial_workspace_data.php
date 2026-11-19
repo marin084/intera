@@ -20,6 +20,34 @@ return new class extends Migration
         'agent_presence_sessions',
     ];
 
+    protected function resolveInitialOwnerId(): ?int
+    {
+        if (! Schema::hasTable('users')) {
+            return null;
+        }
+
+        if (Schema::hasTable('roles') && Schema::hasTable('role_user')) {
+            $roleHierarchy = ['super_admin', 'admin', 'supervisor', 'flow_manager', 'agent'];
+
+            foreach ($roleHierarchy as $roleName) {
+                $userId = DB::table('role_user')
+                    ->join('roles', 'roles.id', '=', 'role_user.role_id')
+                    ->join('users', 'users.id', '=', 'role_user.user_id')
+                    ->where('roles.name', $roleName)
+                    ->orderBy('users.id')
+                    ->value('users.id');
+
+                if ($userId !== null) {
+                    return (int) $userId;
+                }
+            }
+        }
+
+        $firstUserId = DB::table('users')->orderBy('id')->value('id');
+
+        return $firstUserId !== null ? (int) $firstUserId : null;
+    }
+
     public function up(): void
     {
         $slug = env('APP_INITIAL_WORKSPACE_SLUG', 'principal');
@@ -28,7 +56,7 @@ return new class extends Migration
         $workspace = DB::table('workspaces')->where('slug', $slug)->first();
 
         if (! $workspace) {
-            $initialOwnerId = DB::table('users')->orderBy('id')->value('id');
+            $initialOwnerId = $this->resolveInitialOwnerId();
             $workspaceId = (string) Str::uuid();
 
             DB::table('workspaces')->insert([
@@ -43,6 +71,13 @@ return new class extends Migration
             ]);
         } else {
             $workspaceId = $workspace->id;
+
+            if (empty($workspace->initial_owner_id)) {
+                $initialOwnerId = $this->resolveInitialOwnerId();
+                if ($initialOwnerId !== null) {
+                    DB::table('workspaces')->where('id', $workspaceId)->update(['initial_owner_id' => $initialOwnerId]);
+                }
+            }
         }
 
         // 1. Backfill direct tables

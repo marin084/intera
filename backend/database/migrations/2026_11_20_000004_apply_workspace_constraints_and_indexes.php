@@ -56,17 +56,10 @@ return new class extends Migration
     public function up(): void
     {
         $this->withoutForeignKeys(function (): void {
-            $slug = env('APP_INITIAL_WORKSPACE_SLUG', 'principal');
-            $initialWorkspaceId = DB::table('workspaces')->where('slug', $slug)->value('id');
-
             // 1. Teams
             $this->dropUniqueIfExists('teams', 'teams_name_unique');
-            Schema::table('teams', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('teams', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('teams', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -78,12 +71,8 @@ return new class extends Migration
             // 2. Tags
             $this->dropUniqueIfExists('tags', 'tags_name_unique');
             $this->dropUniqueIfExists('tags', 'tags_slug_unique');
-            Schema::table('tags', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('tags', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('tags', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -94,12 +83,8 @@ return new class extends Migration
             });
 
             // 3. Canned Responses
-            Schema::table('canned_responses', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('canned_responses', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('canned_responses', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -109,12 +94,8 @@ return new class extends Migration
             });
 
             // 4. Channels
-            Schema::table('channels', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('channels', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('channels', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -124,12 +105,8 @@ return new class extends Migration
             });
 
             // 5. Contacts
-            Schema::table('contacts', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('contacts', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('contacts', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -139,12 +116,8 @@ return new class extends Migration
             });
 
             // 6. Flows
-            Schema::table('flows', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('flows', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('flows', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -154,12 +127,8 @@ return new class extends Migration
             });
 
             // 7. Conversations
-            Schema::table('conversations', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('conversations', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('conversations', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -169,12 +138,8 @@ return new class extends Migration
             });
 
             // 8. Saved Funnels
-            Schema::table('saved_funnels', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('saved_funnels', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('saved_funnels', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
@@ -185,12 +150,8 @@ return new class extends Migration
 
             // 9. Agent Presence Sessions
             $this->dropIndexIfExists('agent_presence_sessions', 'agent_presence_user_period_idx');
-            Schema::table('agent_presence_sessions', function (Blueprint $table) use ($initialWorkspaceId): void {
-                $col = $table->uuid('workspace_id');
-                if ($initialWorkspaceId) {
-                    $col->default($initialWorkspaceId);
-                }
-                $col->nullable(false)->change();
+            Schema::table('agent_presence_sessions', function (Blueprint $table): void {
+                $table->uuid('workspace_id')->nullable(false)->change();
             });
             Schema::table('agent_presence_sessions', function (Blueprint $table): void {
                 $table->foreign('workspace_id')->references('id')->on('workspaces')->cascadeOnDelete();
