@@ -91,6 +91,13 @@ class ConversationInactivityService
             return 'none';
         }
 
+        // Waiting for a human is not customer inactivity. The conversation can
+        // remain in the queue while an agent is unavailable or takes ownership;
+        // neither the handoff message nor the queue time should start this timer.
+        if ($status === ConversationStatus::WAITING_AGENT) {
+            return 'none';
+        }
+
         $channel = $conversation->channel ?? Channel::find($conversation->channel_id);
         if (!$channel) {
             return 'none';
@@ -101,29 +108,91 @@ class ConversationInactivityService
             return 'none';
         }
 
-        // 2. Strict Golden Rule: check the last customer-facing message
-        $lastMessage = Message::where('conversation_id', $conversation->id)
-            ->where('visibility', '!=', 'internal')
-            ->orderByDesc('sent_at')
-            ->orderByDesc('id')
-            ->first();
-
-        if (!$lastMessage) {
-            return 'none';
-        }
-
-        $direction = $lastMessage->direction instanceof MessageDirection
-            ? $lastMessage->direction
-            : MessageDirection::tryFrom((string) $lastMessage->direction);
-
-        // Prohibitive condition: If last message was inbound, NEVER warn or close
-        if ($direction !== MessageDirection::OUTBOUND) {
-            return 'none';
-        }
-
         $metadata = $conversation->metadata ?? [];
         $warnedAtRaw = $metadata['inactivity_warned_at'] ?? null;
         $warnedAt = $warnedAtRaw ? Carbon::parse($warnedAtRaw) : null;
+
+        // For an assigned conversation, the timer starts only after the agent
+        // has actually replied. Assignment time and the bot handoff message do
+        // not count as customer inactivity.
+        if ($status === ConversationStatus::ASSIGNED) {
+            $activeAssignment = ConversationAssignment::where('conversation_id', $conversation->id)
+                ->where('assigned_user_id', $conversation->assigned_user_id)
+                ->whereNull('unassigned_at')
+                ->orderByDesc('assigned_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if (!$activeAssignment) {
+                return 'none';
+            }
+
+            $lastMessage = Message::where('conversation_id', $conversation->id)
+                ->where('visibility', '!=', 'internal')
+                ->where('direction', MessageDirection::OUTBOUND)
+                ->where('sender_type', MessageSenderType::AGENT)
+                ->where('sent_at', '>=', $activeAssignment->assigned_at)
+                ->orderByDesc('sent_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if (!$lastMessage) {
+                return 'none';
+            }
+
+            $inboundAfterAgent = Message::where('conversation_id', $conversation->id)
+                ->where('visibility', '!=', 'internal')
+                ->where('direction', MessageDirection::INBOUND)
+                ->where('sent_at', '>', $lastMessage->sent_at)
+                ->exists();
+
+            // The customer has responded after the agent's latest reply. Any
+            // previous warning belongs to an older exchange and is reset.
+            if ($inboundAfterAgent) {
+                if ($warnedAt !== null) {
+                    unset($metadata['inactivity_warned_at']);
+                    $conversation->update(['metadata' => $metadata]);
+                }
+
+                return 'none';
+            }
+
+            // A new agent reply starts a fresh inactivity window.
+            if ($warnedAt !== null && $lastMessage->sent_at?->gt($warnedAt)) {
+                unset($metadata['inactivity_warned_at']);
+                $conversation->update(['metadata' => $metadata]);
+                $warnedAt = null;
+            }
+        } else {
+            // For bot conversations, only an outbound bot message can start
+            // inactivity. An inbound customer message always stops the timer.
+            $lastMessage = Message::where('conversation_id', $conversation->id)
+                ->where('visibility', '!=', 'internal')
+                ->orderByDesc('sent_at')
+                ->orderByDesc('id')
+                ->first();
+
+            if (!$lastMessage) {
+                return 'none';
+            }
+
+            $direction = $lastMessage->direction instanceof MessageDirection
+                ? $lastMessage->direction
+                : MessageDirection::tryFrom((string) $lastMessage->direction);
+
+            if ($direction !== MessageDirection::OUTBOUND) {
+                if ($warnedAt !== null && $lastMessage->sent_at?->gt($warnedAt)) {
+                    unset($metadata['inactivity_warned_at']);
+                    $conversation->update(['metadata' => $metadata]);
+                }
+
+                return 'none';
+            }
+
+            if ($lastMessage->sender_type !== MessageSenderType::BOT) {
+                return 'none';
+            }
+        }
 
         $warningEnabled = (bool) ($config['inactivity_warning_enabled'] ?? true);
         $warningMinutes = (int) ($config['inactivity_warning_minutes'] ?? 10);
