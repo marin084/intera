@@ -27,7 +27,7 @@ interface LayoutProps {
 }
 
 export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, children }) => {
-  const { user, roles, logout, hasPermission, hasRole } = useAuth();
+  const { user, roles, logout, hasPermission, hasRole, workspace, workspaces = [], switchWorkspace } = useAuth();
   const isMobile = useIsMobile();
 
   const [collapsed, setCollapsed] = useState<boolean>(() => {
@@ -39,6 +39,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
   });
 
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [workspaceSwitching, setWorkspaceSwitching] = useState(false);
 
   const toggleCollapsed = () => {
     setCollapsed((prev) => {
@@ -64,6 +65,20 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       setMobileOpen(false);
     }
     logout();
+  };
+
+  const handleWorkspaceChange = async (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const nextWorkspaceId = event.target.value;
+    if (!nextWorkspaceId || nextWorkspaceId === workspace?.id || !switchWorkspace) return;
+
+    setWorkspaceSwitching(true);
+    try {
+      await switchWorkspace(nextWorkspaceId);
+      // Permissions and the active workspace are refreshed by AuthProvider.
+      window.location.reload();
+    } finally {
+      setWorkspaceSwitching(false);
+    }
   };
 
   // Close mobile drawer on Escape key
@@ -331,6 +346,22 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
               </span>
             </div>
           </div>
+
+          {workspaces.length > 0 && (
+            <label className="workspace-switcher" title="Espacio de trabajo activo">
+              <span className="workspace-switcher-label">Espacio</span>
+              <select
+                aria-label="Espacio de trabajo activo"
+                value={workspace?.id || ''}
+                onChange={handleWorkspaceChange}
+                disabled={workspaceSwitching}
+              >
+                {workspaces.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+            </label>
+          )}
         </header>
 
         <div className={`content-body content-body--${currentTab}`}>

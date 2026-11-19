@@ -12,6 +12,15 @@ export interface User {
   team_ids?: string[];
 }
 
+export interface WorkspaceMembership {
+  id: string;
+  name: string;
+  slug: string;
+  status: string;
+  role?: string | { id: number; name: string; display_name: string } | null;
+  is_active?: boolean;
+}
+
 export interface Team {
   id: string;
   name: string;

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\WorkspaceUser;
 use App\Services\AuditLogger;
 use App\Services\Presence\AgentPresenceHistoryService;
 use Illuminate\Http\JsonResponse;
@@ -72,6 +73,8 @@ class AuthController extends Controller
 
         RateLimiter::clear($throttleKey);
 
+        $this->ensureActiveWorkspace($user);
+
         $user->update(['last_login_at' => now()]);
 
         // Establish first-party web session for Sanctum SPA cookie auth
@@ -88,6 +91,8 @@ class AuthController extends Controller
             userId: $user->id
         );
 
+        $activeMembership = $user->workspaceMembership($user->active_workspace_id);
+
         return response()->json([
             'user' => [
                 'id' => $user->id,
@@ -96,8 +101,12 @@ class AuthController extends Controller
                 'is_active' => $user->is_active,
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
             ],
-            'roles' => $user->roles->pluck('name')->values(),
-            'permissions' => $user->allPermissions()->pluck('name')->values(),
+            'roles' => $activeMembership?->role
+                ? [$activeMembership->role->name]
+                : $user->roles->pluck('name')->values(),
+            'permissions' => $user->allPermissions($user->active_workspace_id)->pluck('name')->values(),
+            'workspace' => $this->workspacePayload($user, $user->active_workspace_id),
+            'workspaces' => $this->workspacesPayload($user),
         ]);
     }
 
@@ -139,6 +148,9 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         $user = $request->user()->loadMissing('roles.permissions');
+        $this->ensureActiveWorkspace($user);
+
+        $activeMembership = $user->workspaceMembership($user->active_workspace_id);
 
         return response()->json([
             'user' => [
@@ -148,9 +160,77 @@ class AuthController extends Controller
                 'is_active' => $user->is_active,
                 'last_login_at' => $user->last_login_at?->toIso8601String(),
             ],
-            'roles' => $user->roles->pluck('name')->values(),
-            'permissions' => $user->allPermissions()->pluck('name')->values(),
+            'roles' => $activeMembership?->role ? [$activeMembership->role->name] : $user->roles->pluck('name')->values(),
+            'permissions' => $user->allPermissions($user->active_workspace_id)->pluck('name')->values(),
+            'workspace' => $this->workspacePayload($user, $user->active_workspace_id),
+            'workspaces' => $this->workspacesPayload($user),
         ]);
+    }
+
+    private function ensureActiveWorkspace(User $user): void
+    {
+        $memberships = $user->workspaceMemberships()
+            ->with('workspace')
+            ->where('is_active', true)
+            ->whereHas('workspace', fn ($query) => $query->where('status', 'active'))
+            ->orderBy('created_at')
+            ->get();
+
+        if ($memberships->isEmpty()) {
+            return;
+        }
+
+        $active = $memberships->first(fn (WorkspaceUser $membership) =>
+            (string) $membership->workspace_id === (string) $user->active_workspace_id
+        );
+        $selected = $active ?? $memberships->first();
+
+        if ((string) $selected->workspace_id !== (string) $user->active_workspace_id) {
+            $user->forceFill(['active_workspace_id' => $selected->workspace_id])->save();
+        }
+    }
+
+    private function workspacePayload(User $user, ?string $workspaceId): ?array
+    {
+        if (! $workspaceId) {
+            return null;
+        }
+
+        $membership = WorkspaceUser::query()
+            ->with(['workspace', 'role'])
+            ->where('workspace_id', $workspaceId)
+            ->where('user_id', $user->id)
+            ->where('is_active', true)
+            ->first();
+
+        if (! $membership?->workspace) {
+            return null;
+        }
+
+        return [
+            'id' => (string) $membership->workspace_id,
+            'name' => $membership->workspace->name,
+            'slug' => $membership->workspace->slug,
+            'role' => $membership->role?->name,
+        ];
+    }
+
+    private function workspacesPayload(User $user): array
+    {
+        return $user->workspaceMemberships()
+            ->with(['workspace', 'role'])
+            ->where('is_active', true)
+            ->whereHas('workspace', fn ($query) => $query->where('status', 'active'))
+            ->orderBy('created_at')
+            ->get()
+            ->map(fn (WorkspaceUser $membership) => [
+                'id' => (string) $membership->workspace_id,
+                'name' => $membership->workspace?->name,
+                'slug' => $membership->workspace?->slug,
+                'role' => $membership->role?->name,
+            ])
+            ->values()
+            ->all();
     }
 
     public function changePassword(Request $request): JsonResponse
