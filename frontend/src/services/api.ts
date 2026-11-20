@@ -123,6 +123,10 @@ class ApiService {
     return this.request<{ data: import('../types').WorkspaceMember[]; workspace: import('../types').WorkspaceMembership }>(`/workspaces/${workspaceId}/members`);
   }
 
+  async lookupWorkspaceMember(workspaceId: string, email: string) {
+    return this.request<{ data: import('../types').WorkspaceMemberLookup }>(`/workspaces/${workspaceId}/members/lookup?email=${encodeURIComponent(email)}`);
+  }
+
   async addWorkspaceMember(workspaceId: string, payload: { email: string; role: string }) {
     return this.request<{ message: string; data: import('../types').WorkspaceMember }>(`/workspaces/${workspaceId}/members`, {
       method: 'POST',

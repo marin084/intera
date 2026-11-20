@@ -117,6 +117,7 @@ Route::prefix('v1')->group(function () {
         Route::post('/workspaces/switch', [WorkspaceController::class, 'switchWorkspace']);
         Route::post('/workspaces', [WorkspaceController::class, 'store'])->middleware('platform.admin');
         Route::get('/workspaces/{workspace}/members', [WorkspaceController::class, 'members']);
+        Route::get('/workspaces/{workspace}/members/lookup', [WorkspaceController::class, 'lookupMember']);
         Route::post('/workspaces/{workspace}/members', [WorkspaceController::class, 'addMember']);
         Route::patch('/workspaces/{workspace}/members/{member}', [WorkspaceController::class, 'updateMember'])->whereNumber('member');
         Route::delete('/workspaces/{workspace}/members/{member}', [WorkspaceController::class, 'removeMember'])->whereNumber('member');

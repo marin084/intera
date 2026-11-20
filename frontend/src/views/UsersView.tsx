@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../services/api';
 import type { User, Role } from '../types';
 import {
+  Plus,
   UserPlus,
   Shield,
   CheckCircle,
@@ -14,6 +15,7 @@ import {
   Pencil,
 } from 'lucide-react';
 import { useAuth } from '../context/useAuth';
+import type { WorkspaceMembership } from '../types';
 import { ConfirmModal } from '../components/common/ConfirmModal';
 import { DiscardChangesPanel } from '../components/common/DiscardChangesPanel';
 import { useToast } from '../context/ToastContext';
@@ -25,6 +27,13 @@ const channelIconSources: Record<string, string> = {
   telegram: '/channels/telegram.svg',
 };
 
+const WORKSPACE_ASSIGNABLE_ROLES = [
+  { value: 'admin', label: 'Administrador de Workspace' },
+  { value: 'supervisor', label: 'Supervisor de Atención' },
+  { value: 'flow_manager', label: 'Gestor de Flujos' },
+  { value: 'agent', label: 'Agente de Atención' },
+];
+
 const UserChannelIcon: React.FC<{ type: string }> = ({ type }) => {
   const iconSource = channelIconSources[type];
   if (iconSource) {
@@ -35,7 +44,7 @@ const UserChannelIcon: React.FC<{ type: string }> = ({ type }) => {
 };
 
 export const UsersView: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user, workspaces = [] } = useAuth();
   const { showToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -56,6 +65,7 @@ export const UsersView: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [selectedRole, setSelectedRole] = useState('agent');
+  const [workspaceAssignments, setWorkspaceAssignments] = useState<{ workspaceId: string; role: string }[]>([]);
   const [formError, setFormError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [userFormDirty, setUserFormDirty] = useState(false);
@@ -155,6 +165,7 @@ export const UsersView: React.FC = () => {
     setEmail('');
     setPassword('');
     setSelectedRole('agent');
+    setWorkspaceAssignments(user?.is_platform_admin ? [{ workspaceId: '', role: 'agent' }] : []);
     setFormError(null);
     setUserFormDirty(false);
     setConfirmDiscardUserForm(false);
@@ -166,6 +177,7 @@ export const UsersView: React.FC = () => {
     setName(user.name);
     setEmail(user.email);
     setPassword('');
+    setWorkspaceAssignments([]);
     setFormError(null);
     setUserFormDirty(false);
     setConfirmDiscardUserForm(false);
@@ -186,11 +198,27 @@ export const UsersView: React.FC = () => {
         await api.updateUser(editingUser.id, { name, email });
         showToast(`Se actualizaron los datos de «${name}».`, 'success');
       } else {
+        const isPlatformAdmin = Boolean(user?.is_platform_admin);
+        const assignments = workspaceAssignments.map((assignment) => ({
+          workspace_id: assignment.workspaceId,
+          role: assignment.role,
+        }));
+
+        if (isPlatformAdmin) {
+          const hasEmptyWorkspace = assignments.some((assignment) => !assignment.workspace_id);
+          const hasDuplicateWorkspace = new Set(assignments.map((assignment) => assignment.workspace_id).filter(Boolean)).size !== assignments.length;
+          if (!assignments.length || hasEmptyWorkspace || hasDuplicateWorkspace) {
+            setFormError('Selecciona un Workspace distinto para cada asignación.');
+            setSubmitting(false);
+            return;
+          }
+        }
+
         await api.createUser({
           name,
           email,
           password,
-          roles: [selectedRole],
+          ...(isPlatformAdmin ? { workspace_assignments: assignments } : { roles: [selectedRole] }),
         });
         showToast(`Se creó el usuario «${name}».`, 'success');
       }
@@ -201,6 +229,7 @@ export const UsersView: React.FC = () => {
       setName('');
       setEmail('');
       setPassword('');
+      setWorkspaceAssignments([]);
       await fetchUsers();
     } catch (err: any) {
       showToast(err.message || (editingUser ? 'Error al actualizar usuario.' : 'Error al crear usuario.'), 'error');
@@ -613,20 +642,62 @@ export const UsersView: React.FC = () => {
                   />
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Rol del Sistema</label>
-                  <select
-                    className="form-select"
-                    value={selectedRole}
-                    onChange={(e) => setSelectedRole(e.target.value)}
-                  >
-                    {roles.map((r) => (
-                      <option key={r.id} value={r.name}>
-                        {r.display_name} ({r.name})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                {user?.is_platform_admin ? (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', marginBottom: '0.45rem' }}>
+                      <label className="form-label" style={{ marginBottom: 0 }}>Workspaces asignados</label>
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>Puedes elegir varios</span>
+                    </div>
+                    <div style={{ display: 'grid', gap: '0.55rem' }}>
+                      {workspaceAssignments.map((assignment, index) => (
+                        <div key={`${index}-${assignment.workspaceId}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) auto', gap: '0.5rem', alignItems: 'center' }}>
+                          <select
+                            className="form-select"
+                            aria-label={`Workspace ${index + 1}`}
+                            value={assignment.workspaceId}
+                            onChange={(event) => setWorkspaceAssignments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, workspaceId: event.target.value } : item))}
+                          >
+                            <option value="">Selecciona un Workspace</option>
+                            {workspaces.map((workspace: WorkspaceMembership) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+                          </select>
+                          <select
+                            className="form-select"
+                            aria-label={`Rol del Workspace ${index + 1}`}
+                            value={assignment.role}
+                            onChange={(event) => setWorkspaceAssignments((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, role: event.target.value } : item))}
+                          >
+                            {WORKSPACE_ASSIGNABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}
+                          </select>
+                          {workspaceAssignments.length > 1 && <button type="button" className="btn btn-secondary btn-sm" aria-label={`Quitar asignación ${index + 1}`} onClick={() => setWorkspaceAssignments((current) => current.filter((_, itemIndex) => itemIndex !== index))} disabled={submitting}>✕</button>}
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" className="btn btn-secondary btn-sm" style={{ marginTop: '0.65rem' }} onClick={() => setWorkspaceAssignments((current) => [...current, { workspaceId: '', role: 'agent' }])} disabled={submitting}>
+                      <Plus size={14} /> Añadir otro Workspace
+                    </button>
+                    <small style={{ display: 'block', marginTop: '0.45rem', color: 'var(--text-muted)' }}>
+                      El usuario solo quedará asignado a los Workspaces que selecciones. No se agregará automáticamente al Workspace activo.
+                    </small>
+                  </div>
+                ) : (
+                  <div className="form-group">
+                    <label className="form-label">Rol inicial del Workspace</label>
+                    <select
+                      className="form-select"
+                      value={selectedRole}
+                      onChange={(e) => setSelectedRole(e.target.value)}
+                    >
+                      {roles.map((r) => (
+                        <option key={r.id} value={r.name}>
+                          {r.display_name} ({r.name})
+                        </option>
+                      ))}
+                    </select>
+                    <small style={{ display: 'block', marginTop: '0.35rem', color: 'var(--text-muted)' }}>
+                      Define el rol con el que este usuario comenzará en el Workspace actual. Al vincularlo a otro Workspace, este rol se propondrá automáticamente.
+                    </small>
+                  </div>
+                )}
               </>}
 
               </div>

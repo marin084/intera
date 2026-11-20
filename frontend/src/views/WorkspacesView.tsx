@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Building2, Check, Loader2, Plus, ShieldCheck, UserPlus, Users, X } from 'lucide-react';
 import { api } from '../services/api';
-import type { WorkspaceMember, WorkspaceMembership } from '../types';
+import type { WorkspaceMember, WorkspaceMemberLookup, WorkspaceMembership } from '../types';
 import { useToast } from '../context/ToastContext';
 import { useAuth } from '../context/useAuth';
 import { ConfirmModal } from '../components/common/ConfirmModal';
@@ -31,6 +31,10 @@ export const WorkspacesView: React.FC = () => {
   const [workspaceSlug, setWorkspaceSlug] = useState('');
   const [memberEmail, setMemberEmail] = useState('');
   const [memberRole, setMemberRole] = useState('agent');
+  const [memberLookup, setMemberLookup] = useState<WorkspaceMemberLookup | null>(null);
+  const [memberLookupLoading, setMemberLookupLoading] = useState(false);
+  const [memberLookupMessage, setMemberLookupMessage] = useState('');
+  const [changeMemberRole, setChangeMemberRole] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [memberToDeactivate, setMemberToDeactivate] = useState<WorkspaceMember | null>(null);
@@ -76,9 +80,41 @@ export const WorkspacesView: React.FC = () => {
     setSelectedWorkspace(workspace);
     setMemberEmail('');
     setMemberRole('agent');
+    setMemberLookup(null);
+    setMemberLookupMessage('');
+    setChangeMemberRole(false);
     setError('');
     setMembersOpen(true);
     void loadMembers(workspace.id);
+  };
+
+  const lookupMember = async () => {
+    if (!selectedWorkspace || !memberEmail.trim()) return;
+
+    setMemberLookupLoading(true);
+    setMemberLookupMessage('');
+    try {
+      const response = await api.lookupWorkspaceMember(selectedWorkspace.id, memberEmail.trim());
+      const lookup = response.data;
+      setMemberLookup(lookup);
+
+      if (lookup.already_member && lookup.membership_active) {
+        setMemberLookupMessage('Este usuario ya pertenece a este Workspace.');
+      }
+
+      if (lookup.suggested_role) {
+        setMemberRole(lookup.suggested_role.name);
+        setChangeMemberRole(false);
+      } else {
+        setChangeMemberRole(true);
+      }
+    } catch (cause: any) {
+      setMemberLookup(null);
+      setChangeMemberRole(true);
+      setMemberLookupMessage(cause.message || 'No se encontró un usuario con ese correo.');
+    } finally {
+      setMemberLookupLoading(false);
+    }
   };
 
   const closePanels = () => {
@@ -232,10 +268,23 @@ export const WorkspacesView: React.FC = () => {
             <div className="flow-side-panel-body">
               {error && <div role="alert" style={{ padding: '0.75rem', marginBottom: '1rem', borderRadius: '8px', border: '1px solid #fecaca', color: '#b91c1c', background: '#fef2f2' }}>{error}</div>}
               <div style={{ padding: '0.8rem', borderRadius: '10px', background: '#f4f8f6', border: '1px solid var(--border)', marginBottom: '1.1rem' }}><div style={{ display: 'flex', gap: '0.45rem', alignItems: 'center', color: 'var(--text-primary)', fontWeight: 600 }}><ShieldCheck size={16} /> Administración de acceso</div><p style={{ margin: '0.35rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Agrega usuarios que ya existen en Intera. Las invitaciones por correo se incorporarán en una fase posterior.</p></div>
-              <form onSubmit={addMember} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(170px, 0.7fr) auto', gap: '0.55rem', alignItems: 'end', marginBottom: '1.2rem' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label" htmlFor="workspace-member-email">Correo del usuario</label><input id="workspace-member-email" className="form-input" required type="email" value={memberEmail} onChange={(event) => setMemberEmail(event.target.value)} placeholder="usuario@dominio.com" /></div>
-                <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label" htmlFor="workspace-member-role">Rol</label><select id="workspace-member-role" className="form-input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)}>{ASSIGNABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select></div>
-                <button className="btn btn-primary" type="submit" disabled={saving}><UserPlus size={15} /> Agregar</button>
+              <form onSubmit={addMember} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(210px, 0.82fr) auto', gap: '0.55rem', alignItems: 'end', marginBottom: '1.2rem' }}>
+                <div className="form-group" style={{ marginBottom: 0 }}><label className="form-label" htmlFor="workspace-member-email">Correo del usuario</label><input id="workspace-member-email" className="form-input" required type="email" value={memberEmail} onBlur={() => void lookupMember()} onChange={(event) => { setMemberEmail(event.target.value); setMemberLookup(null); setMemberLookupMessage(''); setChangeMemberRole(false); setMemberRole('agent'); }} placeholder="usuario@dominio.com" /></div>
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" htmlFor="workspace-member-role">Rol en este Workspace</label>
+                  {memberLookup?.suggested_role && !changeMemberRole ? (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.45rem', minHeight: '42px', padding: '0.35rem 0.55rem', border: '1px solid var(--border)', borderRadius: '8px', background: '#f4f8f6' }}>
+                      <span style={{ color: 'var(--text-primary)', fontSize: '0.82rem', lineHeight: 1.2 }}>{memberLookup.suggested_role.display_name}</span>
+                      <button className="btn btn-secondary btn-sm" type="button" onClick={() => setChangeMemberRole(true)} disabled={saving}>Cambiar</button>
+                    </div>
+                  ) : (
+                    <select id="workspace-member-role" className="form-input" value={memberRole} onChange={(event) => setMemberRole(event.target.value)} disabled={memberLookupLoading || (memberLookup?.already_member === true && memberLookup.membership_active)}>{ASSIGNABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select>
+                  )}
+                  {memberLookupLoading && <small style={{ display: 'block', marginTop: '0.3rem', color: 'var(--text-muted)' }}>Consultando el rol existente…</small>}
+                  {!memberLookupLoading && memberLookup?.suggested_role && !changeMemberRole && !memberLookupMessage && <small style={{ display: 'block', marginTop: '0.3rem', color: 'var(--text-muted)' }}>Rol heredado del usuario; puedes cambiarlo para este Workspace.</small>}
+                  {memberLookupMessage && <small style={{ display: 'block', marginTop: '0.3rem', color: memberLookup?.already_member ? 'var(--text-muted)' : '#b91c1c' }}>{memberLookupMessage}</small>}
+                </div>
+                <button className="btn btn-primary" type="submit" disabled={saving || memberLookupLoading || (memberLookup?.already_member === true && memberLookup.membership_active)}><UserPlus size={15} /> Agregar</button>
               </form>
               {membersLoading ? <p style={{ color: 'var(--text-muted)' }}>Cargando integrantes…</p> : members.length === 0 ? <p style={{ color: 'var(--text-muted)' }}>No hay integrantes registrados.</p> : <div style={{ display: 'grid', gap: '0.55rem' }}>{members.map((member) => <div key={member.id} style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(170px, 0.65fr) auto', alignItems: 'center', gap: '0.65rem', padding: '0.7rem 0.75rem', border: '1px solid var(--border)', borderRadius: '10px', opacity: member.is_active ? 1 : 0.62 }}><div><strong style={{ display: 'block', color: 'var(--text-primary)' }}>{member.name}{member.is_owner && <span className="badge badge-success" style={{ marginLeft: '0.45rem' }}>Propietario</span>}</strong><small style={{ color: 'var(--text-muted)' }}>{member.email}</small></div><select className="form-input" value={member.role?.name || 'agent'} disabled={member.is_owner || saving || !member.is_active} aria-label={`Rol de ${member.name}`} onChange={(event) => void updateMemberRole(member, event.target.value)}>{ASSIGNABLE_ROLES.map((role) => <option key={role.value} value={role.value}>{role.label}</option>)}</select>{member.is_active ? <button className="btn btn-secondary btn-sm" type="button" disabled={member.is_owner || saving} onClick={() => setMemberToDeactivate(member)}>Desactivar</button> : <button className="btn btn-secondary btn-sm" type="button" disabled={saving} onClick={() => void api.updateWorkspaceMember(selectedWorkspace.id, member.id, { is_active: true }).then(() => loadMembers(selectedWorkspace.id)).catch((cause: any) => showToast(cause.message || 'No se pudo reactivar el acceso.', 'error'))}>Reactivar</button>}</div>)}</div>}
             </div>

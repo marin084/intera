@@ -119,6 +119,66 @@ class WorkspaceController extends Controller
         ]);
     }
 
+    public function lookupMember(Request $request, Workspace $workspace): JsonResponse
+    {
+        /** @var User $actor */
+        $actor = $request->user();
+        $this->ensureWorkspaceManager($actor, $workspace);
+
+        $validated = $request->validate([
+            'email' => ['required', 'email', 'max:255'],
+        ]);
+
+        $member = User::query()
+            ->whereRaw('LOWER(email) = ?', [strtolower(trim($validated['email']))])
+            ->first();
+
+        if (! $member) {
+            return response()->json(['message' => 'No existe un usuario con ese correo. Créalo primero desde Usuarios.', 'code' => 'workspace_user_not_found'], 404);
+        }
+
+        $existingMembership = WorkspaceUser::query()
+            ->where('workspace_id', $workspace->id)
+            ->where('user_id', $member->id)
+            ->with('role')
+            ->first();
+
+        $rolePriority = ['admin', 'supervisor', 'flow_manager', 'agent'];
+        $suggestedRoleName = WorkspaceUser::query()
+            ->where('user_id', $member->id)
+            ->where('is_active', true)
+            ->with('role')
+            ->get()
+            ->map(fn (WorkspaceUser $membership) => $membership->role?->name)
+            ->filter(fn (?string $role) => $role !== null && in_array($role, $rolePriority, true))
+            ->sortBy(fn (string $role) => array_search($role, $rolePriority, true))
+            ->first();
+
+        $suggestedRole = $suggestedRoleName
+            ? Role::query()->where('name', $suggestedRoleName)->first()
+            : null;
+
+        return response()->json([
+            'data' => [
+                'id' => (int) $member->id,
+                'name' => $member->name,
+                'email' => $member->email,
+                'already_member' => $existingMembership !== null,
+                'membership_active' => (bool) $existingMembership?->is_active,
+                'current_role' => $existingMembership?->role ? [
+                    'id' => $existingMembership->role->id,
+                    'name' => $existingMembership->role->name,
+                    'display_name' => $existingMembership->role->display_name,
+                ] : null,
+                'suggested_role' => $suggestedRole ? [
+                    'id' => $suggestedRole->id,
+                    'name' => $suggestedRole->name,
+                    'display_name' => $suggestedRole->display_name,
+                ] : null,
+            ],
+        ]);
+    }
+
     public function addMember(Request $request, Workspace $workspace): JsonResponse
     {
         /** @var User $actor */
