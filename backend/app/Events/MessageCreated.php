@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Broadcasting\WorkspaceChannel;
 use App\Models\Message;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
@@ -18,9 +19,10 @@ class MessageCreated implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
+        $workspaceId = (string) $this->message->conversation->workspace_id;
         $channels = [
-            new PrivateChannel('inbox'),
-            new PrivateChannel("conversation.{$this->message->conversation_id}"),
+            WorkspaceChannel::inbox($workspaceId),
+            WorkspaceChannel::conversation($workspaceId, $this->message->conversation_id),
         ];
 
         $visibility = $this->message->visibility ?? 'public';

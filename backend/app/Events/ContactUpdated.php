@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Broadcasting\WorkspaceChannel;
 use App\Models\Contact;
 use App\Models\Conversation;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -20,9 +21,11 @@ class ContactUpdated implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
+        $workspaceId = (string) $this->conversation->workspace_id;
+
         return [
-            new PrivateChannel('inbox'),
-            new PrivateChannel("conversation.{$this->conversation->id}"),
+            WorkspaceChannel::inbox($workspaceId),
+            WorkspaceChannel::conversation($workspaceId, $this->conversation->id),
             new PrivateChannel("webchat.conversation.{$this->conversation->id}"),
         ];
     }

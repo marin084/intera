@@ -11,6 +11,7 @@ const echoMock = vi.hoisted(() => ({
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => ({
     user: { id: 42, name: 'Agente de prueba', email: 'agent@example.com' },
+    workspace: { id: 'workspace-1', name: 'Workspace de prueba', role: 'agent' },
     hasPermission: (permission: string) =>
       ['conversations.view_all', 'conversations.reply'].includes(permission),
     hasRole: () => false,
@@ -93,13 +94,13 @@ describe('ConversationsView realtime message delivery', () => {
       expect(api.getConversation).toHaveBeenCalledWith('conv-realtime-1');
     });
     await waitFor(() => {
-      expect(echoMock.privateChannels).toContain('conversation.conv-realtime-1');
+      expect(echoMock.privateChannels).toContain('workspace.workspace-1.conversation.conv-realtime-1');
     });
-    expect(echoMock.listeners['conversation.conv-realtime-1:.MessageCreated']).toBeTypeOf('function');
-    expect(echoMock.privateChannels.filter((channel) => channel === 'inbox')).toHaveLength(1);
+    expect(echoMock.listeners['workspace.workspace-1.conversation.conv-realtime-1:.MessageCreated']).toBeTypeOf('function');
+    expect(echoMock.privateChannels.filter((channel) => channel === 'workspace.workspace-1.inbox')).toHaveLength(1);
 
     act(() => {
-      echoMock.listeners['conversation.conv-realtime-1:.MessageCreated']({
+      echoMock.listeners['workspace.workspace-1.conversation.conv-realtime-1:.MessageCreated']({
         id: 'visitor-message-1',
         conversation_id: 'conv-realtime-1',
         sender_type: 'contact',
@@ -114,6 +115,6 @@ describe('ConversationsView realtime message delivery', () => {
     });
 
     expect(await screen.findByText('Mensaje del visitante actualizado en vivo')).toBeInTheDocument();
-    expect(echoMock.privateChannels.filter((channel) => channel === 'inbox')).toHaveLength(1);
+    expect(echoMock.privateChannels.filter((channel) => channel === 'workspace.workspace-1.inbox')).toHaveLength(1);
   });
 });

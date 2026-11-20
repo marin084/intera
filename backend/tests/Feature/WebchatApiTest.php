@@ -597,8 +597,10 @@ class WebchatApiTest extends TestCase
 
             $channels = collect($event->broadcastOn())->pluck('name')->all();
 
-            return in_array('private-inbox', $channels, true)
-                && in_array("private-conversation.{$conversationId}", $channels, true)
+            $workspaceId = $event->message->conversation->workspace_id;
+
+            return in_array("private-workspace.{$workspaceId}.inbox", $channels, true)
+                && in_array("private-workspace.{$workspaceId}.conversation.{$conversationId}", $channels, true)
                 && in_array("private-webchat.conversation.{$conversationId}", $channels, true);
         });
     }
@@ -787,8 +789,10 @@ class WebchatApiTest extends TestCase
 
             $channels = collect($event->broadcastOn())->pluck('name')->all();
 
-            return in_array('private-inbox', $channels, true)
-                && in_array("private-conversation.{$conversation->id}", $channels, true)
+            $workspaceId = $event->message->conversation->workspace_id;
+
+            return in_array("private-workspace.{$workspaceId}.inbox", $channels, true)
+                && in_array("private-workspace.{$workspaceId}.conversation.{$conversation->id}", $channels, true)
                 && in_array("private-webchat.conversation.{$conversation->id}", $channels, true);
         });
     }

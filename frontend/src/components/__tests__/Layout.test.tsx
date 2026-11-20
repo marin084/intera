@@ -2,13 +2,19 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import { Layout } from '../Layout';
 
+const authState = vi.hoisted(() => ({
+  user: { id: 1, name: 'Admin Conexa', email: 'admin@conexa.ai', is_platform_admin: false },
+  roles: [] as string[],
+  logout: vi.fn(),
+  hasPermission: () => true,
+  hasRole: () => false,
+  workspace: { id: 'workspace-a', name: 'Workspace A', role: 'admin' },
+  workspaces: [] as Array<{ id: string; name: string; role: string }>,
+  switchWorkspace: vi.fn(),
+}));
+
 vi.mock('../../context/useAuth', () => ({
-  useAuth: () => ({
-    user: { id: 1, name: 'Admin Conexa', email: 'admin@conexa.ai' },
-    roles: ['super_admin'],
-    logout: vi.fn(),
-    hasPermission: () => true,
-  }),
+  useAuth: () => authState,
 }));
 
 // Mock localStorage for test environment
@@ -34,6 +40,11 @@ describe('Layout Component', () => {
   beforeEach(() => {
     store = {};
     vi.restoreAllMocks();
+    authState.user = { id: 1, name: 'Admin Conexa', email: 'admin@conexa.ai', is_platform_admin: false };
+    authState.roles = [];
+    authState.workspace = { id: 'workspace-a', name: 'Workspace A', role: 'admin' };
+    authState.workspaces = [];
+    authState.switchWorkspace.mockReset();
   });
 
   const setupMatchMedia = (matches: boolean) => {
@@ -97,6 +108,35 @@ describe('Layout Component', () => {
       fireEvent.click(topbarExpandBtn);
       expect(sidebar).not.toHaveClass('collapsed');
       expect(localStorage.getItem('conexa_sidebar_collapsed')).toBe('false');
+    });
+
+    it('shows the active workspace name without a selector for a single-workspace member', () => {
+      authState.workspaces = [authState.workspace];
+
+      render(
+        <Layout currentTab="conversations" onSelectTab={vi.fn()}>
+          <div>Content</div>
+        </Layout>
+      );
+
+      expect(screen.getByLabelText('Workspace activo: Workspace A')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Workspace activo')).not.toBeInTheDocument();
+    });
+
+    it('shows the selector when a member belongs to multiple workspaces', () => {
+      authState.workspaces = [
+        authState.workspace,
+        { id: 'workspace-b', name: 'Workspace B', role: 'agent' },
+      ];
+
+      render(
+        <Layout currentTab="conversations" onSelectTab={vi.fn()}>
+          <div>Content</div>
+        </Layout>
+      );
+
+      expect(screen.getByLabelText('Workspace activo')).toBeInTheDocument();
+      expect(screen.getByRole('option', { name: 'Workspace B' })).toBeInTheDocument();
     });
   });
 

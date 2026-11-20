@@ -22,6 +22,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\WebchatChannelSettings;
 use App\Models\WebchatSession;
+use App\Models\Workspace;
 use App\Services\Media\WhatsAppMediaService;
 use Database\Seeders\RolePermissionSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -260,7 +261,27 @@ class SecurityAuditTest extends TestCase
 
     public function test_internal_messages_are_not_broadcast_to_visitor_websocket_channel(): void
     {
-        $conversationId = (string) Str::uuid();
+        $workspace = Workspace::create([
+            'name' => 'Realtime Security Workspace',
+            'slug' => 'realtime-security-'.Str::lower(Str::random(8)),
+        ]);
+        $channel = Channel::create([
+            'workspace_id' => $workspace->id,
+            'name' => 'Realtime Security Channel',
+            'type' => ChannelType::WEBCHAT,
+        ]);
+        $contact = Contact::create([
+            'workspace_id' => $workspace->id,
+            'display_name' => 'Realtime Contact',
+            'external_identifier' => 'realtime-contact',
+        ]);
+        $conversation = Conversation::create([
+            'workspace_id' => $workspace->id,
+            'channel_id' => $channel->id,
+            'contact_id' => $contact->id,
+            'status' => ConversationStatus::BOT,
+        ]);
+        $conversationId = (string) $conversation->id;
 
         // 1. Internal message
         $internalMsg = new Message([
@@ -274,8 +295,8 @@ class SecurityAuditTest extends TestCase
         $channelsInternal = $eventInternal->broadcastOn();
 
         $channelNamesInternal = array_map(fn ($ch) => $ch->name, $channelsInternal);
-        $this->assertContains("private-conversation.{$conversationId}", $channelNamesInternal);
-        $this->assertContains('private-inbox', $channelNamesInternal);
+        $this->assertContains("private-workspace.{$workspace->id}.conversation.{$conversationId}", $channelNamesInternal);
+        $this->assertContains("private-workspace.{$workspace->id}.inbox", $channelNamesInternal);
         $this->assertNotContains("private-webchat.conversation.{$conversationId}", $channelNamesInternal, 'Internal notes must NEVER broadcast to visitor webchat channel');
 
         // 2. Public message

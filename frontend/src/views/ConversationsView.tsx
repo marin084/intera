@@ -147,7 +147,8 @@ const slaBadgeStyles: Record<SlaTimerState, React.CSSProperties> = {
 
 export const ConversationsView: React.FC = () => {
   const { showToast } = useToast();
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, user, workspace } = useAuth();
+  const workspaceId = workspace?.id;
   const hasPermissionRef = useRef(hasPermission);
   hasPermissionRef.current = hasPermission;
   const isMobile = useIsMobile();
@@ -1178,12 +1179,18 @@ export const ConversationsView: React.FC = () => {
 
   // Setup Realtime Echo for general inbox & user assignments
   useEffect(() => {
+    if (!workspaceId) {
+      setRealtimeStatus('offline');
+      return;
+    }
+
     let cancelled = false;
     let activeEcho: Echo<any> | null = null;
 
     const setupRealtime = async () => {
       const echo = await createEcho({
         authEndpoint: '/api/v1/broadcasting/auth',
+        extraHeaders: { 'X-Workspace-Id': workspaceId },
       });
       if (cancelled) {
         echo.disconnect();
@@ -1204,7 +1211,8 @@ export const ConversationsView: React.FC = () => {
       connection?.bind?.('unavailable', markDisconnected);
       connection?.bind?.('failed', markDisconnected);
 
-      const inboxChannel = echo.private('inbox');
+      const inboxChannelName = `workspace.${workspaceId}.inbox`;
+      const inboxChannel = echo.private(inboxChannelName);
 
     inboxChannel.listen('.ConversationCreated', (event: any) => {
       if (!isSupervisorOrAdminRef.current && event.status === 'bot') {
@@ -1547,7 +1555,8 @@ export const ConversationsView: React.FC = () => {
     });
 
     if (user?.id) {
-      const userChannel = echo.private(`user.${user.id}`);
+      const userChannelName = `workspace.${workspaceId}.user.${user.id}`;
+      const userChannel = echo.private(userChannelName);
 
       userChannel.listen('.ConversationAssigned', (event: any) => {
         triggerNewChatNotification(event.id, event.contact?.display_name || 'Nuevo contacto');
@@ -1663,9 +1672,9 @@ export const ConversationsView: React.FC = () => {
     return () => {
       cancelled = true;
       if (activeEcho) {
-        activeEcho.leave?.('inbox');
+        activeEcho.leave?.(`workspace.${workspaceId}.inbox`);
         if (user?.id) {
-          activeEcho.leave?.(`user.${user.id}`);
+          activeEcho.leave?.(`workspace.${workspaceId}.user.${user.id}`);
         }
         activeEcho.disconnect?.();
       }
@@ -1673,7 +1682,7 @@ export const ConversationsView: React.FC = () => {
         echoRef.current = null;
       }
     };
-  }, [user?.id, matchesCurrentFilters, triggerNewChatNotification, triggerWaitingQueueNotification, showToast]);
+  }, [user?.id, workspaceId, matchesCurrentFilters, triggerNewChatNotification, triggerWaitingQueueNotification, showToast]);
 
   // Reconcile against the API even while connected: a healthy socket does not
   // guarantee that every broadcast was received or that subscriptions succeeded.
@@ -1747,9 +1756,9 @@ export const ConversationsView: React.FC = () => {
 
   // Setup Realtime listener for active selected conversation thread
   useEffect(() => {
-    if (!selectedConversation?.id || !echoRef.current) return;
+    if (!workspaceId || !selectedConversation?.id || !echoRef.current) return;
 
-    const channelName = `conversation.${selectedConversation.id}`;
+    const channelName = `workspace.${workspaceId}.conversation.${selectedConversation.id}`;
     const convChannel = echoRef.current.private(channelName);
 
     convChannel.listen('.MessageCreated', (event: any) => {
@@ -1888,7 +1897,7 @@ export const ConversationsView: React.FC = () => {
     return () => {
       echoRef.current?.leave(channelName);
     };
-  }, [selectedConversation?.id, echoReadyVersion]);
+  }, [selectedConversation?.id, workspaceId, echoReadyVersion]);
 
   const formatFileSize = (bytes: number): string => {
     if (bytes < 1024) return `${bytes} B`;
