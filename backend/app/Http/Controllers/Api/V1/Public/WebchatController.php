@@ -22,12 +22,14 @@ use App\Models\WebchatChannelSettings;
 use App\Models\WebchatSession;
 use App\Support\WebchatOriginPolicy;
 use App\Services\Media\AttachmentUploadService;
+use App\Services\Presence\AgentAvailabilityService;
 use App\Services\Runtime\ConversationIngressService;
 use App\Services\Runtime\FlowResolver;
 use App\Services\Runtime\FlowRuntimeEngine;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class WebchatController extends Controller
@@ -90,6 +92,13 @@ class WebchatController extends Controller
 
         // Generate short-lived embed token
         $embedToken = $this->createEmbedToken($publicKey, $normalizedOrigin);
+        $availableAgentCount = AgentAvailabilityService::getOnlineAgents(
+            ['agent', 'admin', 'supervisor', 'super_admin'],
+            (string) $channel->workspace_id
+        )
+            ->loadMissing('channels:id')
+            ->filter(fn ($agent) => $agent->canAccessChannel((string) $channel->id))
+            ->count();
 
         return response()->json([
             'data' => [
@@ -99,6 +108,17 @@ class WebchatController extends Controller
                     'display_name' => $settings->display_name,
                     'accent_color' => $settings->accent_color,
                     'launcher_position' => $settings->launcher_position,
+                    'launcher_style' => $settings->launcher_style,
+                    'availability_threshold' => $settings->availability_threshold,
+                    'availability_high_message' => $settings->availability_high_message,
+                    'availability_low_message' => $settings->availability_low_message,
+                    'availability_zero_message' => $settings->availability_zero_message,
+                    'launcher_cta_label' => $settings->launcher_cta_label,
+                    'launcher_description' => $settings->launcher_description,
+                    'launcher_icon_url' => $settings->launcher_icon_path
+                        ? Storage::disk('public')->url($settings->launcher_icon_path)
+                        : null,
+                    'available_agent_count' => $availableAgentCount,
                 ],
             ],
         ]);

@@ -9,7 +9,7 @@ export default defineConfig({
       entry: resolve(__dirname, 'src/widget/loader.ts'),
       name: 'ConexaLoader',
       formats: ['iife'],
-      fileName: () => 'conexa.js',
+      fileName: () => 'script.js',
     },
   },
 });

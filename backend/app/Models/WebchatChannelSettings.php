@@ -21,12 +21,21 @@ class WebchatChannelSettings extends Model
         'display_name',
         'accent_color',
         'launcher_position',
+        'launcher_style',
+        'availability_threshold',
+        'availability_high_message',
+        'availability_low_message',
+        'availability_zero_message',
+        'launcher_cta_label',
+        'launcher_description',
+        'launcher_icon_path',
     ];
 
     protected function casts(): array
     {
         return [
             'allowed_origins' => 'array',
+            'availability_threshold' => 'integer',
         ];
     }
 

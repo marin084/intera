@@ -53,6 +53,16 @@ export const ChannelsView: React.FC = () => {
   const [allowedOrigins, setAllowedOrigins] = useState('http://localhost:3000\nhttp://localhost:5173\nhttp://localhost:8080');
   const [accentColor, setAccentColor] = useState('#5d8f82');
   const [launcherPosition, setLauncherPosition] = useState<'bottom-right' | 'bottom-left'>('bottom-right');
+  const [launcherStyle, setLauncherStyle] = useState<'circle' | 'expanded'>('circle');
+  const [availabilityThreshold, setAvailabilityThreshold] = useState(3);
+  const [availabilityHighMessage, setAvailabilityHighMessage] = useState('{count} agentes disponibles');
+  const [availabilityLowMessage, setAvailabilityLowMessage] = useState('Agentes disponibles');
+  const [availabilityZeroMessage, setAvailabilityZeroMessage] = useState('No hay agentes disponibles en este momento');
+  const [launcherCtaLabel, setLauncherCtaLabel] = useState('Chatear ahora');
+  const [launcherDescription, setLauncherDescription] = useState('Estamos aquí para ayudarte.');
+  const [launcherIconFile, setLauncherIconFile] = useState<File | null>(null);
+  const [launcherIconPreview, setLauncherIconPreview] = useState<string | null>(null);
+  const [launcherIconRemove, setLauncherIconRemove] = useState(false);
   const [webchatInstallMode, setWebchatInstallMode] = useState<'floating' | 'fullscreen'>('floating');
   const [copiedFullPageUrlId, setCopiedFullPageUrlId] = useState<string | null>(null);
 
@@ -208,6 +218,27 @@ export const ChannelsView: React.FC = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showCreateModal, editingChannel, channelFormDirty, submitting]);
 
+  useEffect(() => {
+    return () => {
+      if (launcherIconPreview?.startsWith('blob:')) {
+        URL.revokeObjectURL(launcherIconPreview);
+      }
+    };
+  }, [launcherIconPreview]);
+
+  const handleLauncherIconFile = (file: File | null) => {
+    if (!file) return;
+    setLauncherIconFile(file);
+    setLauncherIconPreview(URL.createObjectURL(file));
+    setLauncherIconRemove(false);
+  };
+
+  const resetLauncherIcon = () => {
+    setLauncherIconFile(null);
+    setLauncherIconPreview(null);
+    setLauncherIconRemove(true);
+  };
+
   const getCompatiblePublishedFlows = (type?: string) => {
     return flows.filter((f) => {
       if (f.status !== 'published' || !f.active_version_number) {
@@ -222,8 +253,13 @@ export const ChannelsView: React.FC = () => {
 
   const getEmbedCode = (publicKey?: string) => {
     if (!publicKey) return '';
-    const origin = window.location.origin;
-    return `<script\n  src="${origin}/widget/conexa.js"\n  data-channel="${publicKey}"\n  async>\n</script>`;
+    // During local development Vite serves the panel on 5173, while the
+    // built widget bundle is served by the frontend container on 3100.
+    // Keep production installs same-origin and make the local snippet usable.
+    const origin = window.location.hostname === 'localhost' && window.location.port === '5173'
+      ? 'http://localhost:3100'
+      : window.location.origin;
+    return `<script\n  src="${origin}/widget/script.js"\n  data-channel="${publicKey}"\n  async>\n</script>`;
   };
 
   const getFullPageWebchatUrl = (publicKey?: string) => {
@@ -303,6 +339,16 @@ export const ChannelsView: React.FC = () => {
     setAllowedOrigins(Array.from(new Set(defaultOrigins)).join('\n'));
     setAccentColor('#5d8f82');
     setLauncherPosition('bottom-right');
+    setLauncherStyle('circle');
+    setAvailabilityThreshold(3);
+    setAvailabilityHighMessage('{count} agentes disponibles');
+    setAvailabilityLowMessage('Agentes disponibles');
+    setAvailabilityZeroMessage('No hay agentes disponibles en este momento');
+    setLauncherCtaLabel('Chatear ahora');
+    setLauncherDescription('Estamos aquí para ayudarte.');
+    setLauncherIconFile(null);
+    setLauncherIconPreview(null);
+    setLauncherIconRemove(false);
 
     setPhoneNumberId('');
     setBusinessAccountId('');
@@ -402,6 +448,16 @@ export const ChannelsView: React.FC = () => {
       setAllowedOrigins(origins);
       setAccentColor(ws?.accent_color || '#5d8f82');
       setLauncherPosition((ws?.launcher_position as any) || 'bottom-right');
+      setLauncherStyle((ws?.launcher_style as any) || 'circle');
+      setAvailabilityThreshold(Number(ws?.availability_threshold) || 3);
+      setAvailabilityHighMessage(ws?.availability_high_message || '{count} agentes disponibles');
+      setAvailabilityLowMessage(ws?.availability_low_message || 'Agentes disponibles');
+      setAvailabilityZeroMessage(ws?.availability_zero_message || 'No hay agentes disponibles en este momento');
+      setLauncherCtaLabel(ws?.launcher_cta_label || 'Chatear ahora');
+      setLauncherDescription(ws?.launcher_description || 'Estamos aquí para ayudarte.');
+      setLauncherIconFile(null);
+      setLauncherIconPreview(ws?.launcher_icon_url || null);
+      setLauncherIconRemove(false);
     }
   };
 
@@ -433,7 +489,7 @@ export const ChannelsView: React.FC = () => {
       }
 
       try {
-        await api.createChannel({
+        const createdChannel = await api.createChannel({
           name,
           type: 'webchat',
           is_active: true,
@@ -453,8 +509,18 @@ export const ChannelsView: React.FC = () => {
             allowed_origins: origins,
             accent_color: accentColor,
             launcher_position: launcherPosition,
+            launcher_style: launcherStyle,
+            availability_threshold: Number(availabilityThreshold),
+            availability_high_message: availabilityHighMessage,
+            availability_low_message: availabilityLowMessage,
+            availability_zero_message: availabilityZeroMessage,
+            launcher_cta_label: launcherCtaLabel,
+            launcher_description: launcherDescription,
           },
         });
+        if (launcherIconFile && createdChannel.data?.id) {
+          await api.uploadWebchatLauncherIcon(createdChannel.data.id, launcherIconFile);
+        }
         setShowCreateModal(false);
         fetchChannelsAndFlows();
       } catch (err: any) {
@@ -845,8 +911,20 @@ export const ChannelsView: React.FC = () => {
             allowed_origins: origins,
             accent_color: accentColor,
             launcher_position: launcherPosition,
+            launcher_style: launcherStyle,
+            availability_threshold: Number(availabilityThreshold),
+            availability_high_message: availabilityHighMessage,
+            availability_low_message: availabilityLowMessage,
+            availability_zero_message: availabilityZeroMessage,
+            launcher_cta_label: launcherCtaLabel,
+            launcher_description: launcherDescription,
           },
         });
+        if (launcherIconFile) {
+          await api.uploadWebchatLauncherIcon(editingChannel.id, launcherIconFile);
+        } else if (launcherIconRemove && editingChannel.webchat_settings?.launcher_icon_url) {
+          await api.removeWebchatLauncherIcon(editingChannel.id);
+        }
         setEditingChannel(null);
         fetchChannelsAndFlows();
       } catch (err: any) {
@@ -1067,6 +1145,63 @@ export const ChannelsView: React.FC = () => {
           </div>
         </div>
       )}
+    </div>
+  );
+
+  const renderLauncherIconSection = (modalPrefix: string) => (
+    <div className="form-group">
+      <label className="form-label" htmlFor={`${modalPrefix}_launcher_icon`}>
+        Icono del botón flotante
+      </label>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+        <div
+          aria-hidden="true"
+          style={{
+            width: '52px',
+            height: '52px',
+            borderRadius: '50%',
+            overflow: 'hidden',
+            display: 'grid',
+            placeItems: 'center',
+            flexShrink: 0,
+            background: accentColor,
+            color: '#fff',
+            border: '1px solid var(--border-strong)',
+          }}
+        >
+          {launcherIconPreview ? (
+            <img
+              src={launcherIconPreview}
+              alt=""
+              style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }}
+            />
+          ) : (
+            <MessageCircle size={22} />
+          )}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <input
+            id={`${modalPrefix}_launcher_icon`}
+            type="file"
+            accept="image/png,image/jpeg,image/webp"
+            onChange={(e) => handleLauncherIconFile(e.target.files?.[0] || null)}
+            style={{ maxWidth: '100%' }}
+          />
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '0.25rem 0 0' }}>
+            JPG, PNG o WEBP · máximo 2 MB. Se mostrará siempre en círculo.
+          </p>
+          {launcherIconPreview && (
+            <button
+              type="button"
+              className="btn btn-sm btn-secondary"
+              onClick={resetLauncherIcon}
+              style={{ marginTop: '0.45rem' }}
+            >
+              Usar icono predeterminado
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 
@@ -1557,6 +1692,8 @@ export const ChannelsView: React.FC = () => {
                     />
                   </div>
 
+                  {renderLauncherIconSection('create')}
+
                   <div className="form-group">
                     <label className="form-label">Orígenes / Dominios Permitidos (Allowed Origins)</label>
                     <textarea
@@ -1604,6 +1741,103 @@ export const ChannelsView: React.FC = () => {
                         <option value="bottom-left">Inferior Izquierda (bottom-left)</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginTop: '1rem' }}>
+                    <label className="form-label">Estilo del launcher</label>
+                    <select
+                      className="form-select"
+                      value={launcherStyle}
+                      onChange={(e) => setLauncherStyle(e.target.value as 'circle' | 'expanded')}
+                    >
+                      <option value="circle">Círculo</option>
+                      <option value="expanded">Expandido con disponibilidad</option>
+                    </select>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      El estilo expandido muestra el estado de disponibilidad y un botón de acción.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 0.4fr) 1fr', gap: '1rem' }}>
+                    <div className="form-group">
+                      <label className="form-label">Umbral X</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        min={1}
+                        max={1000}
+                        value={availabilityThreshold}
+                        onChange={(e) => setAvailabilityThreshold(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        X o más usa el mensaje superior.
+                      </p>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Texto del botón</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        maxLength={100}
+                        value={launcherCtaLabel}
+                        onChange={(e) => setLauncherCtaLabel(e.target.value)}
+                        placeholder="Chatear ahora"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Descripción del launcher</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={launcherDescription}
+                      onChange={(e) => setLauncherDescription(e.target.value)}
+                      placeholder="Estamos aquí para ayudarte."
+                    />
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Texto que aparece debajo del estado de disponibilidad.
+                    </p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Mensaje con X o más agentes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={availabilityHighMessage}
+                      onChange={(e) => setAvailabilityHighMessage(e.target.value)}
+                      placeholder="{count} agentes disponibles"
+                    />
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Puedes usar <code>{'{count}'}</code> para mostrar la cantidad real.
+                    </p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Mensaje con 1 a X−1 agentes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={availabilityLowMessage}
+                      onChange={(e) => setAvailabilityLowMessage(e.target.value)}
+                      placeholder="Agentes disponibles"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Mensaje con 0 agentes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={availabilityZeroMessage}
+                      onChange={(e) => setAvailabilityZeroMessage(e.target.value)}
+                      placeholder="No hay agentes disponibles en este momento"
+                    />
                   </div>
                 </div>
               )}
@@ -2470,6 +2704,8 @@ export const ChannelsView: React.FC = () => {
                     <Sliders size={16} /> Configuración del Widget Webchat
                   </h4>
 
+                  {renderLauncherIconSection('edit')}
+
                   <div className="form-group">
                     <label className="form-label">Nombre Visible en el Widget (Header)</label>
                     <input
@@ -2527,6 +2763,103 @@ export const ChannelsView: React.FC = () => {
                         <option value="bottom-left">Inferior Izquierda (bottom-left)</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="form-group" style={{ marginTop: '1rem' }}>
+                    <label className="form-label">Estilo del launcher</label>
+                    <select
+                      className="form-select"
+                      value={launcherStyle}
+                      onChange={(e) => setLauncherStyle(e.target.value as 'circle' | 'expanded')}
+                    >
+                      <option value="circle">Círculo</option>
+                      <option value="expanded">Expandido con disponibilidad</option>
+                    </select>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      El estilo expandido muestra el estado de disponibilidad y un botón de acción.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(90px, 0.4fr) 1fr', gap: '1rem' }}>
+                    <div className="form-group">
+                      <label className="form-label">Umbral X</label>
+                      <input
+                        type="number"
+                        className="form-input"
+                        min={1}
+                        max={1000}
+                        value={availabilityThreshold}
+                        onChange={(e) => setAvailabilityThreshold(Math.max(1, Number(e.target.value) || 1))}
+                      />
+                      <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        X o más usa el mensaje superior.
+                      </p>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Texto del botón</label>
+                      <input
+                        type="text"
+                        className="form-input"
+                        maxLength={100}
+                        value={launcherCtaLabel}
+                        onChange={(e) => setLauncherCtaLabel(e.target.value)}
+                        placeholder="Chatear ahora"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Descripción del launcher</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={launcherDescription}
+                      onChange={(e) => setLauncherDescription(e.target.value)}
+                      placeholder="Estamos aquí para ayudarte."
+                    />
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Texto que aparece debajo del estado de disponibilidad.
+                    </p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Mensaje con X o más agentes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={availabilityHighMessage}
+                      onChange={(e) => setAvailabilityHighMessage(e.target.value)}
+                      placeholder="{count} agentes disponibles"
+                    />
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                      Puedes usar <code>{'{count}'}</code> para mostrar la cantidad real.
+                    </p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Mensaje con 1 a X−1 agentes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={availabilityLowMessage}
+                      onChange={(e) => setAvailabilityLowMessage(e.target.value)}
+                      placeholder="Agentes disponibles"
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Mensaje con 0 agentes</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      maxLength={200}
+                      value={availabilityZeroMessage}
+                      onChange={(e) => setAvailabilityZeroMessage(e.target.value)}
+                      placeholder="No hay agentes disponibles en este momento"
+                    />
                   </div>
 
                   {editingChannel.webchat_settings && (
