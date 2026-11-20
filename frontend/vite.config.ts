@@ -27,19 +27,19 @@ export default defineConfig({
     host: true, // Listen on all network interfaces for local network access in dev
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8100',
         changeOrigin: true,
       },
       '/storage': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8100',
         changeOrigin: true,
       },
       '/sanctum': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8100',
         changeOrigin: true,
       },
       '/health': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:8100',
         changeOrigin: true,
       },
       '/app': {

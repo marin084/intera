@@ -304,6 +304,21 @@ class ApiService {
     });
   }
 
+  async uploadWebchatLauncherIcon(id: string, file: File) {
+    const body = new FormData();
+    body.append('icon', file);
+    return this.request<{ message: string; data: { launcher_icon_url: string } }>('/channels/' + id + '/webchat/launcher-icon', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  async removeWebchatLauncherIcon(id: string) {
+    return this.request<{ message: string; data: { launcher_icon_url: null } }>('/channels/' + id + '/webchat/launcher-icon', {
+      method: 'DELETE',
+    });
+  }
+
   async getWhatsAppTemplates(channelId: string) {
     return this.request<{ data: any[] }>(`/channels/${channelId}/whatsapp-templates`);
   }

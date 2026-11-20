@@ -14,6 +14,8 @@ use App\Services\Runtime\Channels\ChannelAdapterRegistry;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -66,6 +68,91 @@ class ChannelController extends Controller
         ]);
     }
 
+    public function uploadWebchatLauncherIcon(Request $request, Channel $channel): JsonResponse
+    {
+        abort_unless($request->user()->canAccessChannel((string) $channel->id), 403);
+
+        if ($channel->type !== ChannelType::WEBCHAT) {
+            return response()->json(['message' => 'Solo los canales Webchat pueden tener un icono personalizado.'], 422);
+        }
+
+        $validated = $request->validate([
+            'icon' => ['required', 'file', 'mimetypes:image/jpeg,image/png,image/webp', 'max:2048'],
+        ], [
+            'icon.required' => 'Selecciona una imagen para el icono.',
+            'icon.mimetypes' => 'El icono debe ser una imagen JPG, PNG o WEBP.',
+            'icon.max' => 'La imagen no puede superar los 2 MB.',
+        ]);
+
+        $file = $validated['icon'];
+        $extension = match ($file->getMimeType()) {
+            'image/jpeg' => 'jpg',
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            default => null,
+        };
+
+        if (! $extension) {
+            return response()->json(['message' => 'Formato de imagen no permitido.'], 422);
+        }
+
+        $settings = $channel->webchatSettings ?? $this->createDefaultWebchatSettings($channel);
+        $disk = Storage::disk('public');
+        $path = $file->storeAs('webchat-icons', Str::uuid().'.'.$extension, 'public');
+
+        if (! $path) {
+            return response()->json(['message' => 'No se pudo guardar el icono.'], 500);
+        }
+
+        if ($settings->launcher_icon_path && $disk->exists($settings->launcher_icon_path)) {
+            $disk->delete($settings->launcher_icon_path);
+        }
+
+        $settings->update(['launcher_icon_path' => $path]);
+
+        AuditLogger::log(
+            action: 'channel.webchat_launcher_icon_update',
+            entityType: 'Channel',
+            entityId: (string) $channel->id,
+            metadata: ['operation' => 'upload', 'mime_type' => $file->getMimeType()]
+        );
+
+        return response()->json([
+            'message' => 'Icono del Webchat actualizado exitosamente.',
+            'data' => ['launcher_icon_url' => $disk->url($path)],
+        ]);
+    }
+
+    public function removeWebchatLauncherIcon(Request $request, Channel $channel): JsonResponse
+    {
+        abort_unless($request->user()->canAccessChannel((string) $channel->id), 403);
+
+        if ($channel->type !== ChannelType::WEBCHAT) {
+            return response()->json(['message' => 'Solo los canales Webchat pueden tener un icono personalizado.'], 422);
+        }
+
+        $settings = $channel->webchatSettings;
+        if ($settings?->launcher_icon_path) {
+            $disk = Storage::disk('public');
+            if ($disk->exists($settings->launcher_icon_path)) {
+                $disk->delete($settings->launcher_icon_path);
+            }
+            $settings->update(['launcher_icon_path' => null]);
+        }
+
+        AuditLogger::log(
+            action: 'channel.webchat_launcher_icon_update',
+            entityType: 'Channel',
+            entityId: (string) $channel->id,
+            metadata: ['operation' => 'remove']
+        );
+
+        return response()->json([
+            'message' => 'Se restauró el icono predeterminado del Webchat.',
+            'data' => ['launcher_icon_url' => null],
+        ]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $this->sanitizeAllowedOrigins($request);
@@ -101,6 +188,13 @@ class ChannelController extends Controller
             'webchat_settings.allowed_origins.*' => ['string', 'regex:/^https?:\/\/[a-zA-Z0-9\-\.]+(:\d+)?$/'],
             'webchat_settings.accent_color' => ['nullable', 'string', 'regex:/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/'],
             'webchat_settings.launcher_position' => ['nullable', 'string', Rule::in(['bottom-right', 'bottom-left'])],
+            'webchat_settings.launcher_style' => ['nullable', 'string', Rule::in(['circle', 'expanded'])],
+            'webchat_settings.availability_threshold' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'webchat_settings.availability_high_message' => ['nullable', 'string', 'max:200'],
+            'webchat_settings.availability_low_message' => ['nullable', 'string', 'max:200'],
+            'webchat_settings.availability_zero_message' => ['nullable', 'string', 'max:200'],
+            'webchat_settings.launcher_cta_label' => ['nullable', 'string', 'max:100'],
+            'webchat_settings.launcher_description' => ['nullable', 'string', 'max:200'],
         ], [
             'type.in' => 'Canal no soportado. Tipos válidos: '.implode(', ', ChannelType::supportedTypes()).'.',
             'webchat_settings.allowed_origins.*.regex' => 'Cada origen permitido debe ser un origen web válido sin barra final (ej: https://example.com o http://localhost:3000).',
@@ -153,6 +247,13 @@ class ChannelController extends Controller
                 'allowed_origins' => array_values(array_unique($wsData['allowed_origins'] ?? ['http://localhost:3000', 'http://localhost:5173'])),
                 'accent_color' => $wsData['accent_color'] ?? '#2563EB',
                 'launcher_position' => $wsData['launcher_position'] ?? 'bottom-right',
+                'launcher_style' => $wsData['launcher_style'] ?? 'circle',
+                'availability_threshold' => $wsData['availability_threshold'] ?? 3,
+                'availability_high_message' => $wsData['availability_high_message'] ?? '{count} agentes disponibles',
+                'availability_low_message' => $wsData['availability_low_message'] ?? 'Agentes disponibles',
+                'availability_zero_message' => $wsData['availability_zero_message'] ?? 'No hay agentes disponibles en este momento',
+                'launcher_cta_label' => $wsData['launcher_cta_label'] ?? 'Chatear ahora',
+                'launcher_description' => $wsData['launcher_description'] ?? 'Estamos aquí para ayudarte.',
             ]);
             $channel->setRelation('webchatSettings', $settings);
         }
@@ -332,6 +433,13 @@ class ChannelController extends Controller
             'webchat_settings.allowed_origins.*' => ['string', 'regex:/^https?:\/\/[a-zA-Z0-9\-\.]+(:\d+)?$/'],
             'webchat_settings.accent_color' => ['nullable', 'string', 'regex:/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/'],
             'webchat_settings.launcher_position' => ['nullable', 'string', Rule::in(['bottom-right', 'bottom-left'])],
+            'webchat_settings.launcher_style' => ['nullable', 'string', Rule::in(['circle', 'expanded'])],
+            'webchat_settings.availability_threshold' => ['nullable', 'integer', 'min:1', 'max:1000'],
+            'webchat_settings.availability_high_message' => ['nullable', 'string', 'max:200'],
+            'webchat_settings.availability_low_message' => ['nullable', 'string', 'max:200'],
+            'webchat_settings.availability_zero_message' => ['nullable', 'string', 'max:200'],
+            'webchat_settings.launcher_cta_label' => ['nullable', 'string', 'max:100'],
+            'webchat_settings.launcher_description' => ['nullable', 'string', 'max:200'],
         ], [
             'webchat_settings.allowed_origins.*.regex' => 'Cada origen permitido debe ser un origen web válido sin barra final (ej: https://example.com o http://localhost:3000).',
             'webchat_settings.accent_color.regex' => 'El color de acento debe ser un código hexadecimal válido (#RRGGBB o #RGB).',
@@ -415,6 +523,19 @@ class ChannelController extends Controller
             }
             if (isset($wsData['launcher_position'])) {
                 $updatePayload['launcher_position'] = $wsData['launcher_position'];
+            }
+            foreach ([
+                'launcher_style',
+                'availability_threshold',
+                'availability_high_message',
+                'availability_low_message',
+                'availability_zero_message',
+                'launcher_cta_label',
+                'launcher_description',
+            ] as $setting) {
+                if (array_key_exists($setting, $wsData)) {
+                    $updatePayload[$setting] = $wsData[$setting];
+                }
             }
 
             if (! empty($updatePayload)) {
@@ -575,6 +696,13 @@ class ChannelController extends Controller
             'allowed_origins' => ['http://localhost:3000', 'http://localhost:5173'],
             'accent_color' => '#2563EB',
             'launcher_position' => 'bottom-right',
+            'launcher_style' => 'circle',
+            'availability_threshold' => 3,
+            'availability_high_message' => '{count} agentes disponibles',
+            'availability_low_message' => 'Agentes disponibles',
+            'availability_zero_message' => 'No hay agentes disponibles en este momento',
+            'launcher_cta_label' => 'Chatear ahora',
+            'launcher_description' => 'Estamos aquí para ayudarte.',
         ]);
     }
 
@@ -621,6 +749,16 @@ class ChannelController extends Controller
                 'allowed_origins' => $channel->webchatSettings->allowed_origins ?? [],
                 'accent_color' => $channel->webchatSettings->accent_color,
                 'launcher_position' => $channel->webchatSettings->launcher_position,
+                'launcher_style' => $channel->webchatSettings->launcher_style,
+                'availability_threshold' => $channel->webchatSettings->availability_threshold,
+                'availability_high_message' => $channel->webchatSettings->availability_high_message,
+                'availability_low_message' => $channel->webchatSettings->availability_low_message,
+                'availability_zero_message' => $channel->webchatSettings->availability_zero_message,
+                'launcher_cta_label' => $channel->webchatSettings->launcher_cta_label,
+                'launcher_description' => $channel->webchatSettings->launcher_description,
+                'launcher_icon_url' => $channel->webchatSettings->launcher_icon_path
+                    ? Storage::disk('public')->url($channel->webchatSettings->launcher_icon_path)
+                    : null,
                 'updated_at' => $channel->webchatSettings->updated_at?->toIso8601String(),
             ];
         }

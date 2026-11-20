@@ -1311,6 +1311,9 @@ body {
 
 .content-body--channels .channels-table td:nth-child(2) .badge {
   white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  hyphens: none;
 }
 
 .content-body--channels .channels-table td:nth-child(3) .badge,
@@ -1372,8 +1375,10 @@ body {
 }
 
 .content-body--channels .channels-table {
-  min-width: 0;
-  table-layout: auto;
+  /* Keep enough room for the flow and integration labels at intermediate
+     desktop widths; the wrapper provides horizontal scroll when needed. */
+  min-width: 1040px;
+  table-layout: fixed;
 }
 
 .content-body--channels .channels-table.has-actions td:last-child > div {

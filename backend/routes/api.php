@@ -166,6 +166,8 @@ Route::prefix('v1')->group(function () {
         Route::put('/channels/{channel}', [ChannelController::class, 'update'])->middleware('permission:channels.manage');
         Route::patch('/channels/{channel}/status', [ChannelController::class, 'updateStatus'])->middleware('permission:channels.manage');
         Route::post('/channels/{channel}/webchat/regenerate-key', [ChannelController::class, 'regeneratePublicKey'])->middleware('permission:channels.manage');
+        Route::post('/channels/{channel}/webchat/launcher-icon', [ChannelController::class, 'uploadWebchatLauncherIcon'])->middleware('permission:channels.manage');
+        Route::delete('/channels/{channel}/webchat/launcher-icon', [ChannelController::class, 'removeWebchatLauncherIcon'])->middleware('permission:channels.manage');
         Route::delete('/channels/{channel}', [ChannelController::class, 'destroy'])->middleware('permission:channels.manage');
 
         // Flows

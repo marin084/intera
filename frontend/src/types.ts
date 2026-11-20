@@ -92,6 +92,14 @@ export interface WebchatSettingsData {
   allowed_origins: string[];
   accent_color: string | null;
   launcher_position: string;
+  launcher_style?: 'circle' | 'expanded';
+  availability_threshold?: number;
+  availability_high_message?: string;
+  availability_low_message?: string;
+  availability_zero_message?: string;
+  launcher_cta_label?: string;
+  launcher_description?: string;
+  launcher_icon_url?: string | null;
   updated_at?: string;
 }
 

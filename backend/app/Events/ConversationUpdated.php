@@ -2,8 +2,8 @@
 
 namespace App\Events;
 
+use App\Broadcasting\WorkspaceChannel;
 use App\Models\Conversation;
-use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -18,13 +18,14 @@ class ConversationUpdated implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
+        $workspaceId = (string) $this->conversation->workspace_id;
         $channels = [
-            new PrivateChannel('inbox'),
-            new PrivateChannel("conversation.{$this->conversation->id}"),
+            WorkspaceChannel::inbox($workspaceId),
+            WorkspaceChannel::conversation($workspaceId, $this->conversation->id),
         ];
 
         if ($this->conversation->assigned_user_id) {
-            $channels[] = new PrivateChannel("user.{$this->conversation->assigned_user_id}");
+            $channels[] = WorkspaceChannel::user($workspaceId, $this->conversation->assigned_user_id);
         }
 
         return $channels;

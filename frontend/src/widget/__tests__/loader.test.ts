@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
-describe('Webchat Embed Loader (conexa.js)', () => {
+describe('Webchat Embed Loader (script.js)', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
     vi.restoreAllMocks();
@@ -12,7 +12,7 @@ describe('Webchat Embed Loader (conexa.js)', () => {
 
   it('detects data-channel attribute from script tag', () => {
     const script = document.createElement('script');
-    script.src = 'http://localhost:3000/widget/conexa.js';
+    script.src = 'http://localhost:3000/widget/script.js';
     script.setAttribute('data-channel', 'test_pub_key_123');
     document.body.appendChild(script);
 

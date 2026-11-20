@@ -2,6 +2,7 @@
 
 namespace App\Events;
 
+use App\Broadcasting\WorkspaceChannel;
 use App\Models\Conversation;
 use App\Models\User;
 use Illuminate\Broadcasting\PrivateChannel;
@@ -21,14 +22,15 @@ class ConversationAssigned implements ShouldBroadcastNow
 
     public function broadcastOn(): array
     {
+        $workspaceId = (string) $this->conversation->workspace_id;
         $channels = [
-            new PrivateChannel('inbox'),
-            new PrivateChannel("conversation.{$this->conversation->id}"),
+            WorkspaceChannel::inbox($workspaceId),
+            WorkspaceChannel::conversation($workspaceId, $this->conversation->id),
             new PrivateChannel("webchat.conversation.{$this->conversation->id}"),
         ];
 
         if ($this->conversation->assigned_user_id) {
-            $channels[] = new PrivateChannel("user.{$this->conversation->assigned_user_id}");
+            $channels[] = WorkspaceChannel::user($workspaceId, $this->conversation->assigned_user_id);
         }
 
         return $channels;

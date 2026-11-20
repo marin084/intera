@@ -355,7 +355,7 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
             </div>
           </div>
 
-          {isPlatformAdmin && workspaces.length > 0 ? (
+          {(isPlatformAdmin || workspaces.length > 1) && workspaces.length > 0 ? (
             <label className="workspace-switcher" title="Workspace activo">
               <span className="workspace-switcher-label">Workspace</span>
               <select
