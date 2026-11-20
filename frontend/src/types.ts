@@ -35,6 +35,16 @@ export interface WorkspaceMember {
   is_owner: boolean;
 }
 
+export interface WorkspaceMemberLookup {
+  id: number;
+  name: string;
+  email: string;
+  already_member: boolean;
+  membership_active: boolean;
+  current_role?: { id: number; name: string; display_name: string } | null;
+  suggested_role?: { id: number; name: string; display_name: string } | null;
+}
+
 export interface Team {
   id: string;
   name: string;

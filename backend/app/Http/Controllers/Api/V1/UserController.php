@@ -6,10 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\Channel;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Workspace;
 use App\Models\WorkspaceUser;
 use App\Services\AuditLogger;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
@@ -89,6 +91,10 @@ class UserController extends Controller
 
     public function store(Request $request): JsonResponse
     {
+        /** @var User $actor */
+        $actor = $request->user();
+        $isPlatformAdmin = (bool) $actor?->is_platform_admin;
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
@@ -96,20 +102,40 @@ class UserController extends Controller
             'is_active' => ['boolean'],
             'roles' => ['array'],
             'roles.*' => ['string', Rule::in($this->assignableRoleNames($request->user()))],
+            'workspace_assignments' => [$isPlatformAdmin ? 'required' : 'nullable', 'array', 'min:1'],
+            'workspace_assignments.*.workspace_id' => [
+                'required',
+                'uuid',
+                'distinct',
+                Rule::exists('workspaces', 'id')->where(fn ($query) => $query->where('status', 'active')),
+            ],
+            'workspace_assignments.*.role' => ['required', 'string', Rule::in($this->workspaceAssignableRoleNames())],
         ]);
 
-        $user = User::create([
-            'name' => $validated['name'],
-            'email' => $validated['email'],
-            'password' => Hash::make($validated['password']),
-            'is_active' => $validated['is_active'] ?? true,
-        ]);
-
-        if (! empty($validated['roles'])) {
-            $this->syncWorkspaceRole($user, $validated['roles']);
+        if (! $isPlatformAdmin && array_key_exists('workspace_assignments', $validated)) {
+            abort(403, 'Solo un administrador de plataforma puede asignar usuarios a varios workspaces.');
         }
 
-        $this->ensureWorkspaceMembership($user, $validated['roles'] ?? []);
+        $user = DB::transaction(function () use ($validated, $isPlatformAdmin): User {
+            $user = User::create([
+                'name' => $validated['name'],
+                'email' => $validated['email'],
+                'password' => Hash::make($validated['password']),
+                'is_active' => $validated['is_active'] ?? true,
+            ]);
+
+            if ($isPlatformAdmin) {
+                $this->syncWorkspaceAssignments($user, $validated['workspace_assignments'] ?? []);
+            } else {
+                if (! empty($validated['roles'])) {
+                    $this->syncWorkspaceRole($user, $validated['roles']);
+                }
+
+                $this->ensureWorkspaceMembership($user, $validated['roles'] ?? []);
+            }
+
+            return $user;
+        });
 
         $user->load('workspaceMemberships.role');
 
@@ -117,7 +143,11 @@ class UserController extends Controller
             action: 'user.create',
             entityType: 'User',
             entityId: (string) $user->id,
-            metadata: ['email' => $user->email, 'roles' => $validated['roles'] ?? []]
+            metadata: [
+                'email' => $user->email,
+                'roles' => $validated['roles'] ?? [],
+                'workspace_assignments' => $validated['workspace_assignments'] ?? [],
+            ]
         );
 
         return response()->json([
@@ -308,6 +338,15 @@ class UserController extends Controller
             ->all();
     }
 
+    /** @return array<int, string> */
+    private function workspaceAssignableRoleNames(): array
+    {
+        return Role::query()
+            ->whereIn('name', ['admin', 'supervisor', 'flow_manager', 'agent'])
+            ->pluck('name')
+            ->all();
+    }
+
     private function ensureUserBelongsToCurrentWorkspace(User $user): void
     {
         if ($user->belongsToWorkspace()) {
@@ -352,6 +391,23 @@ class UserController extends Controller
         if ($roleId) {
             WorkspaceUser::query()->updateOrCreate(
                 ['workspace_id' => app('current_workspace_id'), 'user_id' => $user->id],
+                ['role_id' => $roleId, 'is_active' => true]
+            );
+        }
+    }
+
+    /** @param array<int, array{workspace_id: string, role: string}> $assignments */
+    private function syncWorkspaceAssignments(User $user, array $assignments): void
+    {
+        foreach ($assignments as $assignment) {
+            $workspace = Workspace::query()
+                ->where('id', $assignment['workspace_id'])
+                ->where('status', 'active')
+                ->firstOrFail();
+            $roleId = Role::query()->where('name', $assignment['role'])->value('id');
+
+            WorkspaceUser::updateOrCreate(
+                ['workspace_id' => $workspace->id, 'user_id' => $user->id],
                 ['role_id' => $roleId, 'is_active' => true]
             );
         }

@@ -78,6 +78,52 @@ class WorkspaceManagementTest extends TestCase
         $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $member->id, 'is_active' => false]);
     }
 
+    public function test_workspace_member_lookup_suggests_the_existing_workspace_role(): void
+    {
+        $platformAdmin = $this->makeUser('platform-lookup@example.com', true);
+        $sourceWorkspace = Workspace::create(['name' => 'Source', 'slug' => 'source', 'initial_owner_id' => $platformAdmin->id]);
+        $targetWorkspace = Workspace::create(['name' => 'Target', 'slug' => 'target']);
+        $member = $this->makeUser('multi-workspace@example.com');
+        $supervisorRole = Role::where('name', 'supervisor')->firstOrFail();
+        WorkspaceUser::create(['workspace_id' => $sourceWorkspace->id, 'user_id' => $member->id, 'role_id' => $supervisorRole->id, 'is_active' => true]);
+
+        $response = $this->actingAs($platformAdmin, 'sanctum')->getJson("/api/v1/workspaces/{$targetWorkspace->id}/members/lookup?email={$member->email}");
+
+        $response->assertOk()
+            ->assertJsonPath('data.email', $member->email)
+            ->assertJsonPath('data.already_member', false)
+            ->assertJsonPath('data.suggested_role.name', 'supervisor')
+            ->assertJsonPath('data.suggested_role.display_name', $supervisorRole->display_name);
+    }
+
+    public function test_platform_admin_creates_a_user_only_in_the_selected_workspaces(): void
+    {
+        $platformAdmin = $this->makeUser('platform-create@example.com', true);
+        $sourceWorkspace = Workspace::create(['name' => 'Current', 'slug' => 'current', 'initial_owner_id' => $platformAdmin->id]);
+        $targetWorkspace = Workspace::create(['name' => 'Selected', 'slug' => 'selected']);
+        $secondTargetWorkspace = Workspace::create(['name' => 'Another', 'slug' => 'another']);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $agentRole = Role::where('name', 'agent')->firstOrFail();
+        WorkspaceUser::create(['workspace_id' => $sourceWorkspace->id, 'user_id' => $platformAdmin->id, 'role_id' => $adminRole->id, 'is_active' => true]);
+        $platformAdmin->forceFill(['active_workspace_id' => $sourceWorkspace->id])->save();
+
+        $response = $this->actingAs($platformAdmin, 'sanctum')->postJson('/api/v1/users', [
+            'name' => 'Selected User',
+            'email' => 'selected-user@example.com',
+            'password' => 'SecurePassword2026!',
+            'workspace_assignments' => [
+                ['workspace_id' => $targetWorkspace->id, 'role' => 'admin'],
+                ['workspace_id' => $secondTargetWorkspace->id, 'role' => 'agent'],
+            ],
+        ]);
+
+        $response->assertCreated();
+        $created = User::where('email', 'selected-user@example.com')->firstOrFail();
+        $this->assertDatabaseHas('workspace_user', ['workspace_id' => $targetWorkspace->id, 'user_id' => $created->id, 'role_id' => $adminRole->id, 'is_active' => true]);
+        $this->assertDatabaseHas('workspace_user', ['workspace_id' => $secondTargetWorkspace->id, 'user_id' => $created->id, 'role_id' => $agentRole->id, 'is_active' => true]);
+        $this->assertDatabaseMissing('workspace_user', ['workspace_id' => $sourceWorkspace->id, 'user_id' => $created->id]);
+    }
+
     public function test_workspace_admin_only_sees_users_in_current_workspace_and_cannot_access_platform_sections(): void
     {
         $workspaceAdmin = User::create([
