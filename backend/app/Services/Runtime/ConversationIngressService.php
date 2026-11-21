@@ -104,7 +104,12 @@ class ConversationIngressService
         try {
             return DB::transaction(function () use ($channel, $contactPayload, $content, $externalMessageId, $metadata, $correlationId, $messageType, $payload, $sourceSentAt) {
                 // 1. Locate or create Contact
-                $contact = $this->resolveContact($contactPayload);
+                // Public channels (Webchat and provider webhooks) do not have
+                // an authenticated operator request to bind tenant context.
+                // Resolve contacts explicitly within the channel's workspace
+                // so an inbound message can never fall back to the initial
+                // workspace or match a contact from another tenant.
+                $contact = $this->resolveContact($contactPayload, (string) $channel->workspace_id);
 
                 // 2. Lock Contact row for update to serialize conversation creation for the same contact
                 $contact = Contact::where('id', $contact->id)->lockForUpdate()->first() ?? $contact;
@@ -358,25 +363,35 @@ class ConversationIngressService
             || str_contains($message, 'Duplicate entry');
     }
 
-    protected function resolveContact(array $payload): Contact
+    protected function resolveContact(array $payload, ?string $workspaceId = null): Contact
     {
         $contact = null;
 
         if (! empty($payload['external_identifier'])) {
-            $contact = Contact::where('external_identifier', $payload['external_identifier'])->first();
+            $contact = Contact::query()
+                ->when($workspaceId, fn ($query) => $query->where('workspace_id', $workspaceId))
+                ->where('external_identifier', $payload['external_identifier'])
+                ->first();
         }
 
         if (! $contact && ! empty($payload['email'])) {
-            $contact = Contact::where('email', $payload['email'])->first();
+            $contact = Contact::query()
+                ->when($workspaceId, fn ($query) => $query->where('workspace_id', $workspaceId))
+                ->where('email', $payload['email'])
+                ->first();
         }
 
         if (! $contact && ! empty($payload['phone'])) {
-            $contact = Contact::where('phone', $payload['phone'])->first();
+            $contact = Contact::query()
+                ->when($workspaceId, fn ($query) => $query->where('workspace_id', $workspaceId))
+                ->where('phone', $payload['phone'])
+                ->first();
         }
 
         if (! $contact) {
             try {
                 $contact = Contact::create([
+                    'workspace_id' => $workspaceId,
                     'display_name' => $payload['display_name'] ?? 'Visitante Anónimo',
                     'external_identifier' => $payload['external_identifier'] ?? (string) Str::uuid(),
                     'email' => $payload['email'] ?? null,
@@ -386,7 +401,10 @@ class ConversationIngressService
             } catch (QueryException $e) {
                 // If a concurrent request created the contact simultaneously, re-query
                 if ($this->isUniqueViolation($e) && ! empty($payload['external_identifier'])) {
-                    $contact = Contact::where('external_identifier', $payload['external_identifier'])->first();
+                    $contact = Contact::query()
+                        ->when($workspaceId, fn ($query) => $query->where('workspace_id', $workspaceId))
+                        ->where('external_identifier', $payload['external_identifier'])
+                        ->first();
                 }
                 if (! $contact) {
                     throw $e;
@@ -422,6 +440,7 @@ class ConversationIngressService
         }
 
         $conversation = Conversation::create([
+            'workspace_id' => $channel->workspace_id,
             'channel_id' => $channel->id,
             'contact_id' => $contact->id,
             'status' => ConversationStatus::BOT,

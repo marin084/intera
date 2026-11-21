@@ -1,6 +1,7 @@
 <?php
 
 use App\Console\Commands\SetupE2ETestCommand;
+use App\Console\Commands\SetupMultitenancyE2ECommand;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Schedule;
@@ -12,6 +13,12 @@ Artisan::command('inspire', function () {
 Artisan::command('test:setup-e2e', function () {
     $this->call(SetupE2ETestCommand::class);
 })->purpose('Prepare E2E test database and users');
+
+Artisan::command('test:setup-multitenancy-e2e {--force : Allow the disposable fixture in production}', function () {
+    $this->call(SetupMultitenancyE2ECommand::class, [
+        '--force' => (bool) $this->option('force'),
+    ]);
+})->purpose('Prepare the disposable two-workspace multitenancy E2E fixture');
 
 Schedule::command('webchat:sessions:prune')
     ->daily()
