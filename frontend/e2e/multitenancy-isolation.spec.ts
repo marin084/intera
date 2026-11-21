@@ -104,13 +104,51 @@ test.describe('Multitenancy isolation E2E', () => {
     await expect(pageA.getByText('E2E Shared Agent', { exact: true })).toBeVisible();
     await expect(pageA.locator('body')).not.toContainText('E2E Admin Workspace B');
 
+    const usersA = await apiJson(pageA, '/api/v1/users');
+    expect(usersA.status).toBe(200);
+    expect(JSON.stringify(usersA.body)).toContain('E2E Admin Workspace A');
+    expect(JSON.stringify(usersA.body)).not.toContain('E2E Admin Workspace B');
+
     await pageA.goto(`${BASE_URL}/flows`);
     await expect(pageA.getByText('E2E Flow A', { exact: true })).toBeVisible();
     await expect(pageA.locator('body')).not.toContainText('E2E Flow B');
 
+    const [flowsA, teamsA, channelsA, conversationsA] = await Promise.all([
+      apiJson(pageA, '/api/v1/flows'),
+      apiJson(pageA, '/api/v1/teams'),
+      apiJson(pageA, '/api/v1/channels'),
+      apiJson(pageA, '/api/v1/conversations'),
+    ]);
+    expect(flowsA.status).toBe(200);
+    expect(teamsA.status).toBe(200);
+    expect(channelsA.status).toBe(200);
+    expect(conversationsA.status).toBe(200);
+    expect(JSON.stringify(flowsA.body)).toContain('E2E Flow A');
+    expect(JSON.stringify(flowsA.body)).not.toContain('E2E Flow B');
+    expect(JSON.stringify(teamsA.body)).toContain('E2E Team A');
+    expect(JSON.stringify(teamsA.body)).not.toContain('E2E Team B');
+    expect(JSON.stringify(channelsA.body)).toContain('E2E Webchat A');
+    expect(JSON.stringify(channelsA.body)).not.toContain('E2E Webchat B');
+    expect(JSON.stringify(conversationsA.body)).toContain('E2E Contact A');
+    expect(JSON.stringify(conversationsA.body)).not.toContain('E2E Contact B');
+
     await pageB.goto(`${BASE_URL}/channels`);
     await expect(pageB.getByText('E2E Webchat B', { exact: true })).toBeVisible();
     await expect(pageB.locator('body')).not.toContainText('E2E Webchat A');
+
+    const usersB = await apiJson(pageB, '/api/v1/users');
+    expect(usersB.status).toBe(200);
+    expect(JSON.stringify(usersB.body)).toContain('E2E Admin Workspace B');
+    expect(JSON.stringify(usersB.body)).not.toContain('E2E Admin Workspace A');
+
+    const conversationsB = await apiJson(pageB, '/api/v1/conversations');
+    expect(conversationsB.status).toBe(200);
+    expect(JSON.stringify(conversationsB.body)).toContain('E2E Contact B');
+    expect(JSON.stringify(conversationsB.body)).not.toContain('E2E Contact A');
+
+    const foreignConversationId = conversationsB.body.data[0].id as string;
+    const directForeignConversation = await apiJson(pageA, `/api/v1/conversations/${foreignConversationId}`);
+    expect([403, 404]).toContain(directForeignConversation.status);
 
     const crossTenantFlows = await apiJson(pageA, '/api/v1/flows', {
       headers: { 'X-Workspace-Id': WORKSPACE_B_ID },
