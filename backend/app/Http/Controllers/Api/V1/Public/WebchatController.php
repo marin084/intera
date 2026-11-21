@@ -185,6 +185,7 @@ class WebchatController extends Controller
         // Create new Contact and WebchatSession
         $shortId = Str::lower(Str::random(6));
         $contact = Contact::create([
+            'workspace_id' => $settings->channel->workspace_id,
             'display_name' => "Visitante {$shortId}",
             'external_identifier' => 'wcv_'.Str::uuid(),
             'metadata' => ['origin' => $normalizedOrigin],
@@ -363,6 +364,7 @@ class WebchatController extends Controller
         // If NO previous conversation exists: create initial conversation as usual
         $conversation = DB::transaction(function () use ($channel, $session, $entryVersion) {
             $conv = Conversation::create([
+                'workspace_id' => $channel->workspace_id,
                 'channel_id' => $channel->id,
                 'contact_id' => $session->contact_id,
                 'status' => ConversationStatus::BOT,

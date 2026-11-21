@@ -10,7 +10,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: process.env.E2E_BASE_URL ?? 'http://localhost:3100',
     trace: 'off',
     video: 'off',
     screenshot: 'off',
@@ -23,7 +23,7 @@ export default defineConfig({
     {
       name: 'webkit',
       use: { ...devices['Desktop Safari'] },
-      testMatch: /(.*smoke\.spec\.ts|.*flow-.*\.spec\.ts)/,
+      testMatch: /(.*smoke\.spec\.ts|.*flow-.*\.spec\.ts|.*multitenancy-.*\.spec\.ts)/,
     },
   ],
 });
