@@ -420,7 +420,7 @@ class InboxOperabilityTest extends TestCase
         $this->assertNotNull($execution->fresh()->completed_at);
     }
 
-    public function test_sending_messages_to_closed_conversation_is_blocked_for_all_actors(): void
+    public function test_sending_messages_to_closed_non_meta_conversation_allows_followups(): void
     {
         $conv = Conversation::create([
             'channel_id' => $this->channel->id,
@@ -431,24 +431,21 @@ class InboxOperabilityTest extends TestCase
             'closed_at' => now(),
         ]);
 
-        // Agent attempts to send message -> 422 conversation_closed
+        // Webchat follow-up from the assigned agent is allowed after closure.
         $agentRes = $this->actingAs($this->agentA, 'sanctum')
             ->postJson("/api/v1/conversations/{$conv->id}/messages", [
                 'content' => 'Intento de mensaje en conversación cerrada',
             ]);
-        $agentRes->assertStatus(422)
-            ->assertJsonPath('code', 'conversation_closed');
+        $agentRes->assertStatus(201);
 
-        // Supervisor attempts to send message -> 422 conversation_closed
+        // A supervisor can also send a non-Meta follow-up.
         $supRes = $this->actingAs($this->supervisor, 'sanctum')
             ->postJson("/api/v1/conversations/{$conv->id}/messages", [
                 'content' => 'Intento de supervisor',
             ]);
-        $supRes->assertStatus(422)
-            ->assertJsonPath('code', 'conversation_closed');
+        $supRes->assertStatus(201);
 
-        // Confirm zero messages created
-        $this->assertEquals(0, Message::where('conversation_id', $conv->id)->count());
+        $this->assertEquals(2, Message::where('conversation_id', $conv->id)->count());
     }
 
     public function test_read_state_tracking_and_independent_unread_count_per_user(): void

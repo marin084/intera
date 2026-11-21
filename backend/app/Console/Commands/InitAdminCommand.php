@@ -35,9 +35,18 @@ class InitAdminCommand extends Command
     {
         $this->info('=== Inicialización del Super Administrador de Intera ===');
 
-        $email = $this->option('email') ?: (getenv('INITIAL_ADMIN_EMAIL') ?: env('INITIAL_ADMIN_EMAIL'));
-        $name = $this->option('name') ?: (getenv('INITIAL_ADMIN_NAME') ?: env('INITIAL_ADMIN_NAME'));
-        $password = $this->option('password') ?: (getenv('INITIAL_ADMIN_PASSWORD') ?: env('INITIAL_ADMIN_PASSWORD'));
+        $email = $this->option('email');
+        $name = $this->option('name');
+        $password = $this->option('password');
+
+        // Environment-provided bootstrap credentials are for unattended
+        // startup only. Tests must remain interactive and deterministic even
+        // when the host/container exposes production bootstrap variables.
+        if (! app()->environment('testing')) {
+            $email = $email ?: (getenv('INITIAL_ADMIN_EMAIL') ?: env('INITIAL_ADMIN_EMAIL'));
+            $name = $name ?: (getenv('INITIAL_ADMIN_NAME') ?: env('INITIAL_ADMIN_NAME'));
+            $password = $password ?: (getenv('INITIAL_ADMIN_PASSWORD') ?: env('INITIAL_ADMIN_PASSWORD'));
+        }
 
         if (! $email) {
             $email = $this->ask('Ingrese el correo electrónico del administrador:');

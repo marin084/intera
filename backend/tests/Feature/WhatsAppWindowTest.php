@@ -628,7 +628,7 @@ class WhatsAppWindowTest extends TestCase
         $this->assertEquals(MessageStatus::SENT, $newMsg->fresh()->status);
     }
 
-    public function test_closed_non_whatsapp_channel_is_blocked_by_closed_status(): void
+    public function test_closed_non_whatsapp_channel_allows_followup(): void
     {
         $conversation = Conversation::create([
             'channel_id' => $this->webchatChannel->id,
@@ -646,11 +646,8 @@ class WhatsAppWindowTest extends TestCase
             'visibility' => 'public',
         ]);
 
-        $response->assertStatus(422)
-            ->assertJson([
-                'message' => 'La conversación está cerrada y no admite nuevos mensajes.',
-                'code' => 'conversation_closed',
-            ]);
+        $response->assertStatus(201)
+            ->assertJsonPath('data.content', 'Intento enviar en webchat cerrado');
     }
 
     public function test_closing_conversation_releases_active_assignment_immediately_and_preserves_history(): void

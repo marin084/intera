@@ -30,6 +30,31 @@ class MultitenancyPhase1SchemaTest extends TestCase
 {
     use RefreshDatabase;
 
+    /**
+     * Roll back through a named multitenancy migration without coupling the
+     * test to the number of migrations added after the original phase.
+     */
+    protected function rollbackThroughMultitenancyMigration(string $migration): int
+    {
+        $lastBatch = DB::table('migrations')->max('batch');
+        $latestBatch = DB::table('migrations')
+            ->where('batch', $lastBatch)
+            ->orderByDesc('migration')
+            ->pluck('migration')
+            ->values();
+
+        $position = $latestBatch->search($migration, true);
+
+        if ($position === false) {
+            throw new RuntimeException("La migración {$migration} no está aplicada en el último batch.");
+        }
+
+        return Artisan::call('migrate:rollback', [
+            '--step' => $position + 1,
+            '--force' => true,
+        ]);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -355,9 +380,11 @@ class MultitenancyPhase1SchemaTest extends TestCase
     /** 10. Rollback en base vacía */
     public function test_10_rollback_on_empty_database(): void
     {
-        // En base vacía, rollback de 4 pasos debe completarse sin excepciones
+        // En base vacía, el rollback de las migraciones multitenant debe completarse sin excepciones
         DB::table('workspaces')->delete();
-        $exitCode = Artisan::call('migrate:rollback', ['--step' => 4, '--force' => true]);
+        $exitCode = $this->rollbackThroughMultitenancyMigration(
+            '2026_11_20_000001_create_workspaces_and_workspace_user_tables'
+        );
         $this->assertSame(0, $exitCode);
 
         // Restaurar estado para siguientes pruebas
@@ -371,7 +398,9 @@ class MultitenancyPhase1SchemaTest extends TestCase
         // Con exactamente 1 workspace (single-tenant), el rollback es permitido limpiamente
         $this->assertSame(1, DB::table('workspaces')->count());
 
-        $exitCode = Artisan::call('migrate:rollback', ['--step' => 4, '--force' => true]);
+        $exitCode = $this->rollbackThroughMultitenancyMigration(
+            '2026_11_20_000001_create_workspaces_and_workspace_user_tables'
+        );
         $this->assertSame(0, $exitCode);
 
         $this->assertFalse(Schema::hasTable('workspaces'));
@@ -391,7 +420,9 @@ class MultitenancyPhase1SchemaTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('ABORTADO: Existen múltiples workspaces con datos activos');
 
-        Artisan::call('migrate:rollback', ['--step' => 1, '--force' => true]);
+        $this->rollbackThroughMultitenancyMigration(
+            '2026_11_20_000001_create_workspaces_and_workspace_user_tables'
+        );
     }
 
     /** 13. Verificación de ejecución de migraciones en SQLite */
@@ -515,7 +546,7 @@ class MultitenancyPhase1SchemaTest extends TestCase
         $superAdminUser->roles()->attach($superAdminRole);
 
         // Escenario A: super_admin (ID 40) debe ganar sobre usuarios con menor ID pero menor jerarquía
-        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        $this->rollbackThroughMultitenancyMigration('2026_11_20_000003_backfill_initial_workspace_data');
         Artisan::call('migrate', ['--force' => true]);
 
         $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
@@ -526,7 +557,7 @@ class MultitenancyPhase1SchemaTest extends TestCase
         DB::table('workspaces')->delete();
         $superAdminUser->roles()->detach();
 
-        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        $this->rollbackThroughMultitenancyMigration('2026_11_20_000003_backfill_initial_workspace_data');
         Artisan::call('migrate', ['--force' => true]);
 
         $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
@@ -536,7 +567,7 @@ class MultitenancyPhase1SchemaTest extends TestCase
         DB::table('workspaces')->delete();
         $adminUser->roles()->detach();
 
-        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        $this->rollbackThroughMultitenancyMigration('2026_11_20_000003_backfill_initial_workspace_data');
         Artisan::call('migrate', ['--force' => true]);
 
         $workspace = DB::table('workspaces')->where('slug', 'principal')->first();
@@ -547,7 +578,7 @@ class MultitenancyPhase1SchemaTest extends TestCase
         $supervisorUser->roles()->detach();
         $agentUser->roles()->detach();
 
-        Artisan::call('migrate:rollback', ['--step' => 2, '--force' => true]);
+        $this->rollbackThroughMultitenancyMigration('2026_11_20_000003_backfill_initial_workspace_data');
         Artisan::call('migrate', ['--force' => true]);
 
         $workspace = DB::table('workspaces')->where('slug', 'principal')->first();

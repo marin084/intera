@@ -13,7 +13,7 @@ class HealthTest extends TestCase
         $response->assertStatus(200)
             ->assertJson([
                 'status' => 'ok',
-                'app' => 'Conexa',
+                'app' => 'Intera',
                 'version' => '1.0.0-rc.2',
             ]);
     }
