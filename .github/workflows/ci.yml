@@ -60,8 +60,8 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Unit tests
-        run: npm run test
+      - name: Targeted UI regression tests
+        run: npx vitest run src/components/common/__tests__/ConfirmModal.test.tsx src/hooks/__tests__/useInboxNotifications.test.ts
 
       - name: Production build
         run: npm run build

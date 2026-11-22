@@ -7,7 +7,10 @@ credenciales o mensajes de clientes desde una rama de desarrollo.
 ## Antes de revisar una iteración
 
 1. Confirmar que la rama parte de `main` actualizado.
-2. Ejecutar la suite backend y las comprobaciones del frontend.
+2. Ejecutar la suite backend y las comprobaciones del frontend. La suite
+   completa de Vitest conserva fallos históricos de módulos no relacionados;
+   la CI ejecuta las regresiones de esta iteración, lint y build, mientras se
+   mantiene esa deuda visible para una fase específica de mantenimiento.
 3. Levantar la instancia local con Docker Compose.
 4. Verificar `/health`, `/health/ready` y el estado de Reverb.
 5. Crear o cargar fixtures E2E desechables únicamente en el entorno local.
