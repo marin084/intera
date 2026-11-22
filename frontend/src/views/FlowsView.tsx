@@ -937,7 +937,7 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
             <form onSubmit={handleDeleteFlow}>
               <div className="flow-delete-body" style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
                 {deleteError && (
-                  <div className="alert alert-danger" style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', fontSize: '0.85rem' }}>
+                  <div role="alert" className="alert alert-danger" style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', fontSize: '0.85rem' }}>
                     {deleteError}
                   </div>
                 )}
@@ -974,7 +974,7 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
 
                 {/* Canal Vinculado Bloqueado */}
                 {blockingChannels.length > 0 && (
-                  <div className="alert alert-danger" style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', fontSize: '0.85rem' }}>
+                  <div role="alert" className="alert alert-danger" style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', fontSize: '0.85rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
                       <XCircle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#dc2626' }} />
                       <div>
@@ -994,7 +994,7 @@ export const FlowsView: React.FC<FlowsViewProps> = ({ onOpenEditor, onViewAnalyt
 
                 {/* Advertencia de conversaciones asociadas */}
                 {blockingChannels.length === 0 && deleteConversationsCount !== null && (
-                  <div className="alert alert-danger" style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', fontSize: '0.85rem' }}>
+                  <div role="alert" className="alert alert-danger" style={{ background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', fontSize: '0.85rem' }}>
                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
                       <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px', color: '#dc2626' }} />
                       <div>

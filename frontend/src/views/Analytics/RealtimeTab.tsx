@@ -232,7 +232,7 @@ export const RealtimeTab: React.FC<RealtimeTabProps> = ({ onOpenConversation: _o
 
       {/* Error Banner */}
       {error && (
-        <div className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+        <div role="alert" className="alert alert-danger" style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
           <AlertCircle size={18} />
           <span>{error}</span>
         </div>

@@ -169,6 +169,9 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
 
     const confirmBtn = screen.getByTestId('confirm-delete-channel-btn');
     expect(confirmBtn).toHaveTextContent('Sí, eliminar canal');
+    fireEvent.change(screen.getByTestId('confirm-delete-channel-modal-confirmation-input'), {
+      target: { value: 'WhatsApp Marketing' },
+    });
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {

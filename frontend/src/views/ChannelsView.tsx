@@ -1207,7 +1207,7 @@ export const ChannelsView: React.FC = () => {
 
   return (
     <div>
-      <div className="alert alert-info" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
+      <div role="note" className="alert alert-info" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem' }}>
         <Info size={20} style={{ flexShrink: 0, marginTop: '2px' }} />
         <div>
           <strong>Omnicanalidad Intera:</strong> Conecta canales <strong>Webchat Embebible</strong> para sitios web o el conector oficial de <strong>WhatsApp Cloud API (Meta Graph API)</strong>. Todos los mensajes se procesan a través del motor de flujos en tiempo real y convergen en el Inbox unificado.
@@ -1215,7 +1215,7 @@ export const ChannelsView: React.FC = () => {
       </div>
 
       {activeChannelsWithoutFlow.length > 0 && (
-        <div className="alert alert-warning" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem', background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
+        <div role="status" className="alert alert-warning" style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '1rem', background: '#fffbeb', borderColor: '#fde68a', color: '#92400e' }}>
           <AlertTriangle size={20} style={{ flexShrink: 0, marginTop: '2px', color: '#d97706' }} />
           <div>
             <strong>Advertencia de configuración:</strong> Se detectaron {activeChannelsWithoutFlow.length} canal(es) activo(s) sin flujo inicial configurado. Las conversaciones en estos canales no ejecutarán automatizaciones hasta que les asigne un flujo publicado.
@@ -1482,7 +1482,7 @@ export const ChannelsView: React.FC = () => {
                 style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', overscrollBehavior: 'contain' }}
               >
                 {formErrorMessage && (
-                  <div className="alert alert-danger" style={{ marginBottom: '1.25rem', background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div role="alert" className="alert alert-danger" style={{ marginBottom: '1.25rem', background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <AlertTriangle size={18} color="#dc2626" />
                     <span>{formErrorMessage}</span>
                   </div>
@@ -2326,7 +2326,7 @@ export const ChannelsView: React.FC = () => {
                 style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', overscrollBehavior: 'contain' }}
               >
                 {formErrorMessage && (
-                  <div className="alert alert-danger" style={{ marginBottom: '1.25rem', background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <div role="alert" className="alert alert-danger" style={{ marginBottom: '1.25rem', background: '#fef2f2', borderColor: '#fca5a5', color: '#991b1b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <AlertTriangle size={18} color="#dc2626" />
                     <span>{formErrorMessage}</span>
                   </div>
@@ -3269,7 +3269,7 @@ export const ChannelsView: React.FC = () => {
               <p style={{ fontSize: '0.9rem', color: '#56736b', lineHeight: 1.5 }}>
                 ¿Está seguro de que desea regenerar el identificador público para el canal <strong>{confirmRegenChannel.name}</strong>?
               </p>
-              <div className="alert alert-warning" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', fontSize: '0.8rem', marginTop: '0.75rem' }}>
+              <div role="alert" className="alert alert-warning" style={{ background: '#fef2f2', borderColor: '#fecaca', color: '#991b1b', fontSize: '0.8rem', marginTop: '0.75rem' }}>
                 <strong>Advertencia de impacto:</strong> Todos los sitios web externos que tengan instalado el widget con la clave actual (<code>{confirmRegenChannel.webchat_settings.public_key}</code>) dejarán de conectar hasta que reemplacen el snippet por la nueva clave generada.
               </div>
             </div>
