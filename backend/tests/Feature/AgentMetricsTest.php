@@ -13,6 +13,7 @@ use App\Models\ConversationAssignment;
 use App\Models\Message;
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -293,5 +294,55 @@ class AgentMetricsTest extends TestCase
         $detailContent = $detailResp->getContent();
         $this->assertStringContainsString('Carlos Operador', $detailContent);
         $this->assertStringNotContainsString('Mariana Agente', $detailContent);
+    }
+
+    public function test_agent_metrics_and_exports_never_include_another_workspace(): void
+    {
+        $otherWorkspace = Workspace::create([
+            'name' => 'Workspace métricas aislado',
+            'slug' => 'workspace-metricas-aislado-'.uniqid(),
+            'status' => 'active',
+        ]);
+        $otherChannel = Channel::create([
+            'workspace_id' => $otherWorkspace->id,
+            'name' => 'Canal métricas aislado',
+            'type' => ChannelType::WEBCHAT->value,
+            'is_active' => true,
+        ]);
+        $otherContact = Contact::create([
+            'workspace_id' => $otherWorkspace->id,
+            'display_name' => 'Contacto de otro workspace',
+            'phone' => '+50600000000',
+        ]);
+        $otherConversation = Conversation::create([
+            'workspace_id' => $otherWorkspace->id,
+            'channel_id' => $otherChannel->id,
+            'contact_id' => $otherContact->id,
+            'status' => ConversationStatus::ASSIGNED->value,
+            'assigned_user_id' => $this->agent1->id,
+            'started_at' => now()->subMinutes(10),
+            'created_at' => now()->subMinutes(10),
+        ]);
+        ConversationAssignment::create([
+            'conversation_id' => $otherConversation->id,
+            'assigned_user_id' => $this->agent1->id,
+            'assigned_at' => now()->subMinutes(9),
+        ]);
+
+        $metricsResponse = $this->actingAs($this->admin, 'sanctum')
+            ->getJson('/api/v1/analytics/agents');
+
+        $metricsResponse->assertOk();
+        $agentRow = collect($metricsResponse->json('data.agents'))
+            ->firstWhere('agent_id', $this->agent1->id);
+        $this->assertNotNull($agentRow);
+        $this->assertSame(0, $agentRow['assigned_conversations']);
+        $this->assertSame(0, $agentRow['active_conversations']);
+
+        $exportResponse = $this->actingAs($this->admin, 'sanctum')
+            ->get('/api/v1/analytics/agents/export-conversations');
+
+        $exportResponse->assertOk();
+        $this->assertStringNotContainsString('Contacto de otro workspace', $exportResponse->getContent());
     }
 }

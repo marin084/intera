@@ -14,6 +14,7 @@ use App\Models\WebchatSession;
 use App\Services\Presence\AgentAvailabilityService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Query\JoinClause;
 use Illuminate\Support\Facades\DB;
 
 class RealtimeAnalyticsService
@@ -26,6 +27,12 @@ class RealtimeAnalyticsService
      */
     public function getRealtimeMetrics(?string $channelId = null): array
     {
+        // Realtime analytics is a tenant-bound surface.  Do not allow this
+        // service to be called without an active workspace context: several
+        // of the supporting tables (sessions, assignments and queue entries)
+        // are related to a workspace through another model and therefore do
+        // not have an Eloquent workspace global scope of their own.
+        $workspaceId = $this->currentWorkspaceId();
         $now = now();
         $oneHourAgo = $now->copy()->subMinutes(60);
         $twoHoursAgo = $now->copy()->subMinutes(120);
@@ -34,7 +41,8 @@ class RealtimeAnalyticsService
         $webchatVisitorsQuery = WebchatSession::query()
             ->where('last_seen_at', '>=', $now->copy()->subMinutes(15))
             ->whereNull('revoked_at')
-            ->where('expires_at', '>', $now);
+            ->where('expires_at', '>', $now)
+            ->whereHas('channel', fn (Builder $q) => $q->where('channels.workspace_id', $workspaceId));
 
         if ($channelId) {
             $webchatVisitorsQuery->where('channel_id', $channelId);
@@ -85,7 +93,7 @@ class RealtimeAnalyticsService
         $avgQueueWaitSeconds = $this->calculateAvgQueueWaitSeconds($channelId);
         $avgFirstResponseSeconds = $this->calculateAvgFirstResponseSeconds($channelId);
         $avgResolutionSeconds = $this->calculateAvgResolutionSeconds($channelId);
-        $serviceTargetAlerts = $this->calculateServiceTargetAlerts($channelId, $now);
+        $serviceTargetAlerts = $this->calculateServiceTargetAlerts($channelId, $now, $workspaceId);
 
         // 6. Agent conversations status
         $ongoingConversations = Conversation::query()
@@ -142,13 +150,17 @@ class RealtimeAnalyticsService
      *
      * @return array<string, array{tracked: int, on_time: int, at_risk: int, overdue: int}>
      */
-    protected function calculateServiceTargetAlerts(?string $channelId, Carbon $now): array
+    protected function calculateServiceTargetAlerts(?string $channelId, Carbon $now, string $workspaceId): array
     {
         $defaultQueueTarget = (int) config('teams.service_targets.queue_wait_seconds', 120);
         $defaultFirstResponseTarget = (int) config('teams.service_targets.first_response_seconds', 300);
 
         $waiting = DB::table('conversations')
-            ->leftJoin('teams', 'teams.id', '=', 'conversations.team_id')
+            ->leftJoin('teams', function (JoinClause $join) use ($workspaceId): void {
+                $join->on('teams.id', '=', 'conversations.team_id')
+                    ->where('teams.workspace_id', $workspaceId);
+            })
+            ->where('conversations.workspace_id', $workspaceId)
             ->where('conversations.is_simulation', false)
             ->where('conversations.status', ConversationStatus::WAITING_AGENT->value)
             ->whereNull('conversations.assigned_user_id')
@@ -160,7 +172,11 @@ class RealtimeAnalyticsService
 
         $awaitingFirstResponse = DB::table('conversation_assignments as current_assignment')
             ->join('conversations', 'conversations.id', '=', 'current_assignment.conversation_id')
-            ->leftJoin('teams', 'teams.id', '=', 'conversations.team_id')
+            ->leftJoin('teams', function (JoinClause $join) use ($workspaceId): void {
+                $join->on('teams.id', '=', 'conversations.team_id')
+                    ->where('teams.workspace_id', $workspaceId);
+            })
+            ->where('conversations.workspace_id', $workspaceId)
             ->where('conversations.is_simulation', false)
             ->where('conversations.status', ConversationStatus::ASSIGNED->value)
             ->whereNotNull('conversations.assigned_user_id')
@@ -251,6 +267,7 @@ class RealtimeAnalyticsService
         $waitTimes = [];
 
         $assignments = ConversationQueueEntry::query()
+            ->whereHas('conversation')
             ->whereNotNull('assigned_at')
             ->where('assigned_at', '>=', $today)
             ->where('exit_reason', 'assigned')
@@ -268,6 +285,7 @@ class RealtimeAnalyticsService
 
         // Active waiting conversations count from the most recent queue entry.
         $currentlyWaiting = ConversationQueueEntry::query()
+            ->whereHas('conversation')
             ->whereNull('ended_at')
             ->whereHas('conversation', fn (Builder $q) => $q
                 ->where('status', ConversationStatus::WAITING_AGENT->value)
@@ -294,6 +312,7 @@ class RealtimeAnalyticsService
 
         $assignments = ConversationAssignment::query()
             ->join('conversations', 'conversation_assignments.conversation_id', '=', 'conversations.id')
+            ->where('conversations.workspace_id', $this->currentWorkspaceId())
             ->when($channelId, fn (Builder $q) => $q->where('conversations.channel_id', $channelId))
             ->where('conversation_assignments.assigned_at', '>=', $today)
             ->select('conversation_assignments.conversation_id', 'conversation_assignments.assigned_at')
@@ -319,6 +338,24 @@ class RealtimeAnalyticsService
         }
 
         return count($firstResponseTimes) > 0 ? (int) round(array_sum($firstResponseTimes) / count($firstResponseTimes)) : 0;
+    }
+
+    /**
+     * Return the workspace selected by the authenticated request.
+     *
+     * This service must never fall back to an unscoped, cross-tenant query.
+     */
+    private function currentWorkspaceId(): string
+    {
+        $workspaceId = app()->bound('current_workspace_id')
+            ? (string) app('current_workspace_id')
+            : '';
+
+        if ($workspaceId === '') {
+            throw new \LogicException('Realtime analytics requires an active workspace context.');
+        }
+
+        return $workspaceId;
     }
 
     /**

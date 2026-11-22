@@ -14,6 +14,7 @@ use App\Models\Message;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\WebchatSession;
+use App\Models\Workspace;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -227,5 +228,55 @@ class RealtimeAnalyticsTest extends TestCase
         $this->assertEquals(1, $data['last_hour_kpis']['chats_last_hour']);
         // Webchat visitors on whatsapp channel filter should be 0
         $this->assertEquals(0, $data['last_hour_kpis']['active_webchat_visitors']);
+    }
+
+    public function test_realtime_analytics_never_counts_another_workspace(): void
+    {
+        $otherWorkspace = Workspace::create([
+            'name' => 'Workspace aislado',
+            'slug' => 'workspace-aislado-'.uniqid(),
+            'status' => 'active',
+        ]);
+        $otherChannel = Channel::create([
+            'workspace_id' => $otherWorkspace->id,
+            'name' => 'Webchat aislado',
+            'type' => ChannelType::WEBCHAT->value,
+            'is_active' => true,
+        ]);
+        $otherContact = Contact::create([
+            'workspace_id' => $otherWorkspace->id,
+            'display_name' => 'Contacto aislado',
+            'email' => 'aislado@example.test',
+        ]);
+        Conversation::create([
+            'workspace_id' => $otherWorkspace->id,
+            'channel_id' => $otherChannel->id,
+            'contact_id' => $otherContact->id,
+            'status' => ConversationStatus::WAITING_AGENT->value,
+            'queued_at' => now()->subMinutes(2),
+            'started_at' => now()->subMinutes(2),
+            'created_at' => now()->subMinutes(2),
+        ]);
+        WebchatSession::create([
+            'id' => (string) \Illuminate\Support\Str::uuid(),
+            'channel_id' => $otherChannel->id,
+            'contact_id' => $otherContact->id,
+            'token_hash' => hash('sha256', 'isolated-token'),
+            'origin' => 'http://isolated.example.test',
+            'last_seen_at' => now()->subMinutes(2),
+            'expires_at' => now()->addHour(),
+        ]);
+
+        $response = $this->actingAs($this->admin, 'sanctum')
+            ->getJson('/api/v1/analytics/realtime');
+
+        $response->assertOk();
+        $data = $response->json('data');
+
+        $this->assertSame(0, $data['last_hour_kpis']['active_webchat_visitors']);
+        $this->assertSame(0, $data['last_hour_kpis']['chats_last_hour']);
+        $this->assertSame(0, $data['last_hour_kpis']['unread_chats']);
+        $this->assertSame(0, $data['service_target_alerts']['queue']['tracked']);
+        $this->assertFalse(collect($data['channels_summary'])->pluck('channel_id')->contains($otherChannel->id));
     }
 }
