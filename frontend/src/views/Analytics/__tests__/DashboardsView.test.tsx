@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { DashboardsView } from '../DashboardsView';
 import { api } from '../../../services/api';
+import { ToastProvider } from '../../../context/ToastContext';
 import type {
   FlowAnalyticsData,
   UsersAndSessionsData,
@@ -559,7 +560,11 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
   });
 
   it('loads and renders Funnels tab with sequential funnel visualization and without static menu breakdown cards', async () => {
-    render(<DashboardsView initialTab="funnels" />);
+    render(
+      <ToastProvider>
+        <DashboardsView initialTab="funnels" />
+      </ToastProvider>
+    );
 
     await waitFor(() => {
       expect(api.getFlows).toHaveBeenCalled();
@@ -618,7 +623,11 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
   });
 
   it('manages saved funnels: lists, selects, creates new funnel, saves changes, and deletes with confirm modal', async () => {
-    render(<DashboardsView initialTab="funnels" />);
+    render(
+      <ToastProvider>
+        <DashboardsView initialTab="funnels" />
+      </ToastProvider>
+    );
 
     // Wait for saved funnels to be fetched and populated in selector
     await waitFor(() => {
@@ -647,7 +656,7 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
         })
       );
     });
-    expect(screen.getByText(/Cambios guardados en "Ruta Ofrendas a Peticiones"/i)).toBeInTheDocument();
+    expect(screen.getByText(/Cambios guardados en «Ruta Ofrendas a Peticiones»/i)).toBeInTheDocument();
 
     // 3. Click "+ Nuevo Funnel"
     fireEvent.click(screen.getByTestId('btn-new-funnel'));
@@ -666,10 +675,17 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
         })
       );
     });
+    await waitFor(() => {
+      expect(screen.getByTestId('saved-funnel-selector')).toHaveValue('saved-funnel-new');
+    });
 
     // 4. Delete saved funnel with ConfirmModal
     // First select our saved funnel again
-    fireEvent.change(funnelSelector, { target: { value: 'saved-funnel-1' } });
+    const existingFunnelSelector = screen.getByTestId('saved-funnel-selector') as HTMLSelectElement;
+    fireEvent.change(existingFunnelSelector, { target: { value: 'saved-funnel-1' } });
+    await waitFor(() => {
+      expect(existingFunnelSelector).toHaveValue('saved-funnel-1');
+    });
     const deleteBtn = screen.getByTestId('btn-delete-funnel');
     fireEvent.click(deleteBtn);
 
@@ -678,6 +694,9 @@ describe('DashboardsView & Analytics Tabs (Fase 1 y Fase 2)', () => {
     expect(screen.getByText(/¿Estás seguro de que deseas eliminar permanentemente el embudo/i)).toBeInTheDocument();
 
     // Click confirm delete
+    fireEvent.change(screen.getByTestId('delete-funnel-confirm-modal-confirmation-input'), {
+      target: { value: 'Ruta Ofrendas a Peticiones' },
+    });
     fireEvent.click(screen.getByTestId('confirm-delete-funnel-btn'));
     await waitFor(() => {
       expect(api.deleteSavedFunnel).toHaveBeenCalledWith('saved-funnel-1');

@@ -143,6 +143,22 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    const mockLocalStorage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    Object.defineProperty(window, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+      configurable: true,
+    });
     Object.keys(echoListeners).forEach((key) => delete echoListeners[key]);
     (api.getUsers as any).mockResolvedValue({ data: [] });
     (api.getTeams as any).mockResolvedValue({ data: [] });
@@ -167,8 +183,6 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
     (api.getConversation as any).mockResolvedValue({ data: activeWhatsAppConversation });
 
     render(<ConversationsView />);
-
-    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
@@ -198,8 +212,6 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
 
     render(<ConversationsView />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
-
     await waitFor(() => {
       expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
     });
@@ -210,7 +222,8 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
       expect(screen.getByTestId('whatsapp-24h-expired-banner')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/La conversación se cerró luego de 24 horas del último mensaje del usuario/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ventana de atención de 24 horas de WhatsApp expirada/i)).toBeInTheDocument();
+    expect(screen.getByText(/Haz clic aquí para reabrirla con una plantilla preaprobada de WhatsApp/i)).toBeInTheDocument();
     expect(screen.getByTestId('reopen-with-template-btn')).toBeInTheDocument();
 
     // Verify input and submit buttons are disabled
@@ -322,6 +335,8 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
 
     render(<ConversationsView />);
 
+    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
+
     await waitFor(() => {
       expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
     });
@@ -355,6 +370,8 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
     (api.getConversation as any).mockResolvedValue({ data: closedExpiredConversation });
 
     render(<ConversationsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('conversation-item')).toBeInTheDocument();

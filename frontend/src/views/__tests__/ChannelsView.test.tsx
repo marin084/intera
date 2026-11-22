@@ -183,7 +183,7 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByRole('status')).toHaveTextContent('Canal eliminado exitosamente.');
+      expect(screen.getByText('Canal eliminado exitosamente.')).toBeInTheDocument();
     });
   });
 });
