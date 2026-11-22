@@ -1,0 +1,70 @@
+name: INTERA multitenancy E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intera-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  multitenancy:
+    name: Workspace isolation (local channels only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Start local stack
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          APP_ENV: testing
+          APP_DEBUG: false
+          INITIAL_ADMIN_EMAIL: e2e.platform@intera.test
+          INITIAL_ADMIN_NAME: E2E Platform Admin
+          INITIAL_ADMIN_PASSWORD: E2EPlatformPass@2026
+        run: docker compose up -d --build
+
+      - name: Wait for frontend health
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:3100/health >/dev/null; then
+              exit 0
+            fi
+            sleep 3
+          done
+          docker compose ps
+          docker compose logs --tail 200 backend frontend
+          exit 1
+
+      - name: Run multitenancy browser tests
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:3100
+        run: npx playwright test e2e/multitenancy-isolation.spec.ts --project=chromium --project=webkit
+
+      - name: Collect stack logs
+        if: always()
+        run: docker compose logs --tail 300 backend reverb frontend
+
+      - name: Stop local stack
+        if: always()
+        run: docker compose down -v

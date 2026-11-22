@@ -13,7 +13,7 @@ return [
     |
     */
 
-    'name' => env('APP_NAME', 'Conexa'),
+    'name' => env('APP_NAME', 'Intera'),
 
     'version' => env('APP_VERSION', '1.0.0-rc.2'),
 

@@ -120,10 +120,10 @@ describe('ConversationsView Inbox Sound & Notification Controls', () => {
     render(<ConversationsView />);
 
     await waitFor(() => {
-      expect(document.title).toContain('Conexa — Bandeja de Entrada');
+      expect(document.title).toContain('Intera — Bandeja de Entrada');
     });
 
     // We have 1 conversation waiting_agent with unread_count: 2
-    expect(document.title).toBe('(1) Conexa — Bandeja de Entrada');
+      expect(document.title).toBe('(1) Intera — Bandeja de Entrada');
   });
 });
