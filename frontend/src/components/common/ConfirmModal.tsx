@@ -210,6 +210,9 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
             type="button"
             ref={cancelButtonRef}
             data-testid={cancelTestId}
+            // Cancellation must remain available while the destructive action
+            // is being prepared. The exact-name requirement only guards the
+            // confirm action, never the escape hatch.
             disabled={isLoading}
             onClick={onClose}
             className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium px-4 py-2.5 rounded-xl transition-colors"

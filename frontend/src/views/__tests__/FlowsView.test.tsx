@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { FlowsView } from '../FlowsView';
 import { api } from '../../services/api';
+import { ToastProvider } from '../../context/ToastContext';
+
+const renderFlowsView = () => render(<ToastProvider><FlowsView /></ToastProvider>);
 
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => ({
@@ -77,7 +80,7 @@ describe('FlowsView Safe Deletion', () => {
   });
 
   it('renders flows table and delete button for each flow', async () => {
-    render(<FlowsView />);
+    renderFlowsView();
 
     await waitFor(() => {
       expect(screen.getByText('Flujo de Ventas')).toBeInTheDocument();
@@ -89,7 +92,7 @@ describe('FlowsView Safe Deletion', () => {
   });
 
   it('blocks deletion when flow is configured as entry flow in channels', async () => {
-    render(<FlowsView />);
+    renderFlowsView();
 
     await waitFor(() => {
       expect(screen.getByText('Flujo de Ventas')).toBeInTheDocument();
@@ -110,7 +113,7 @@ describe('FlowsView Safe Deletion', () => {
   });
 
   it('requires exact flow name confirmation to enable deletion button', async () => {
-    render(<FlowsView />);
+    renderFlowsView();
 
     await waitFor(() => {
       expect(screen.getByText('Flujo Experimental')).toBeInTheDocument();
@@ -143,7 +146,7 @@ describe('FlowsView Safe Deletion', () => {
       message: "Flujo 'Flujo Experimental' eliminado exitosamente.",
     });
 
-    render(<FlowsView />);
+    renderFlowsView();
 
     await waitFor(() => {
       expect(screen.getByText('Flujo Experimental')).toBeInTheDocument();
@@ -166,7 +169,7 @@ describe('FlowsView Safe Deletion', () => {
 
     await waitFor(() => {
       expect(api.deleteFlow).toHaveBeenCalledWith('flow-free', false);
-      expect(screen.getByText("Flujo 'Flujo Experimental' eliminado exitosamente.")).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent("Flujo 'Flujo Experimental' eliminado exitosamente.");
     });
   });
 
@@ -184,7 +187,7 @@ describe('FlowsView Safe Deletion', () => {
         message: 'Flujo eliminado con force.',
       });
 
-    render(<FlowsView />);
+    renderFlowsView();
 
     await waitFor(() => {
       expect(screen.getByText('Flujo Experimental')).toBeInTheDocument();
