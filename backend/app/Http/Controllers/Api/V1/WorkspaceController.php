@@ -221,13 +221,45 @@ class WorkspaceController extends Controller
         $nextRole = $validated['role'] ?? $membership->role?->name;
         $nextActive = array_key_exists('is_active', $validated) ? (bool) $validated['is_active'] : $membership->is_active;
         $this->ensureMembershipChangeIsSafe($workspace, $membership, $nextRole, $nextActive);
-        if (isset($validated['role'])) {
-            $membership->role_id = Role::query()->where('name', $validated['role'])->value('id');
-        }
-        if (array_key_exists('is_active', $validated)) {
-            $membership->is_active = $nextActive;
-        }
-        $membership->save();
+        $wasActive = (bool) $membership->is_active;
+
+        DB::transaction(function () use ($validated, $membership, $nextActive, $workspace, $member, $wasActive): void {
+            if (isset($validated['role'])) {
+                $membership->role_id = Role::query()->where('name', $validated['role'])->value('id');
+            }
+            if (array_key_exists('is_active', $validated)) {
+                $membership->is_active = $nextActive;
+            }
+            $membership->save();
+
+            if (! $wasActive || $nextActive) {
+                return;
+            }
+
+            // A membership deactivation must immediately stop presence in
+            // this workspace, while preserving sessions in other workspaces.
+            DB::table('agent_presence_sessions')
+                ->where('user_id', $member->id)
+                ->where('workspace_id', $workspace->id)
+                ->whereNull('ended_at')
+                ->update(['ended_at' => now()]);
+
+            // Do not leave the user pointing at a workspace they can no
+            // longer access. Keep the next active membership when available;
+            // AuthController::ensureActiveWorkspace will also repair legacy
+            // records on the next authentication request.
+            if ((string) $member->active_workspace_id === (string) $workspace->id) {
+                $nextWorkspaceId = WorkspaceUser::query()
+                    ->where('user_id', $member->id)
+                    ->where('is_active', true)
+                    ->where('workspace_id', '!=', $workspace->id)
+                    ->whereHas('workspace', fn ($query) => $query->where('status', 'active'))
+                    ->orderBy('created_at')
+                    ->value('workspace_id');
+
+                $member->forceFill(['active_workspace_id' => $nextWorkspaceId])->save();
+            }
+        });
         $membership->load(['user', 'role', 'workspace']);
         AuditLogger::log(action: 'workspace.member_updated', entityType: 'WorkspaceUser', entityId: (string) $membership->id, metadata: ['member_id' => $member->id, 'role' => $membership->role?->name, 'is_active' => $membership->is_active], userId: $actor->id, workspaceId: $workspace->id);
         return response()->json(['message' => 'Integrante actualizado correctamente.', 'data' => $this->formatWorkspaceMember($membership)]);
