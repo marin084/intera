@@ -1,6 +1,15 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { FlowPublishModal } from '../FlowPublishModal';
+import { ToastProvider } from '../../../context/ToastContext';
+
+const renderModal = (props: ComponentProps<typeof FlowPublishModal>) =>
+  render(
+    <ToastProvider>
+      <FlowPublishModal {...props} />
+    </ToastProvider>
+  );
 
 describe('FlowPublishModal', () => {
   it('renders form step with notes, callout and actions', () => {
@@ -8,17 +17,15 @@ describe('FlowPublishModal', () => {
     const onClose = vi.fn();
     const onSuccessDismiss = vi.fn();
 
-    render(
-      <FlowPublishModal
-        isOpen={true}
-        versionNumber={2}
-        notes=""
-        onChangeNotes={vi.fn()}
-        onPublish={onPublish}
-        onClose={onClose}
-        onSuccessDismiss={onSuccessDismiss}
-      />
-    );
+    renderModal({
+      isOpen: true,
+      versionNumber: 2,
+      notes: '',
+      onChangeNotes: vi.fn(),
+      onPublish,
+      onClose,
+      onSuccessDismiss,
+    });
 
     expect(screen.getByText('Publicar versión 2')).toBeInTheDocument();
     expect(screen.getByText(/Una versión publicada es/i)).toBeInTheDocument();
@@ -32,17 +39,15 @@ describe('FlowPublishModal', () => {
     const onClose = vi.fn();
     const onSuccessDismiss = vi.fn();
 
-    render(
-      <FlowPublishModal
-        isOpen={true}
-        versionNumber="3"
-        notes="Nueva funcionalidad"
-        onChangeNotes={vi.fn()}
-        onPublish={onPublish}
-        onClose={onClose}
-        onSuccessDismiss={onSuccessDismiss}
-      />
-    );
+    renderModal({
+      isOpen: true,
+      versionNumber: '3',
+      notes: 'Nueva funcionalidad',
+      onChangeNotes: vi.fn(),
+      onPublish,
+      onClose,
+      onSuccessDismiss,
+    });
 
     const publishBtn = screen.getByRole('button', { name: /Publicar versión/i });
     fireEvent.click(publishBtn);
@@ -66,17 +71,15 @@ describe('FlowPublishModal', () => {
   it('displays error message when publishing fails', async () => {
     const onPublish = vi.fn().mockRejectedValue(new Error('Error de validación del servidor'));
 
-    render(
-      <FlowPublishModal
-        isOpen={true}
-        versionNumber={1}
-        notes=""
-        onChangeNotes={vi.fn()}
-        onPublish={onPublish}
-        onClose={vi.fn()}
-        onSuccessDismiss={vi.fn()}
-      />
-    );
+    renderModal({
+      isOpen: true,
+      versionNumber: 1,
+      notes: '',
+      onChangeNotes: vi.fn(),
+      onPublish,
+      onClose: vi.fn(),
+      onSuccessDismiss: vi.fn(),
+    });
 
     fireEvent.click(screen.getByRole('button', { name: /Publicar versión/i }));
 
@@ -86,18 +89,16 @@ describe('FlowPublishModal', () => {
   });
 
   it('does not render when isOpen is false', () => {
-    const { container } = render(
-      <FlowPublishModal
-        isOpen={false}
-        versionNumber={1}
-        notes=""
-        onChangeNotes={vi.fn()}
-        onPublish={vi.fn()}
-        onClose={vi.fn()}
-        onSuccessDismiss={vi.fn()}
-      />
-    );
+    const { container } = renderModal({
+      isOpen: false,
+      versionNumber: 1,
+      notes: '',
+      onChangeNotes: vi.fn(),
+      onPublish: vi.fn(),
+      onClose: vi.fn(),
+      onSuccessDismiss: vi.fn(),
+    });
 
-    expect(container.firstChild).toBeNull();
+    expect(container.querySelector('.modal-overlay')).toBeNull();
   });
 });

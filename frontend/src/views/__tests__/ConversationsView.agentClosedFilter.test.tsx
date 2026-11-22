@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 import { ConversationsView } from '../ConversationsView';
 import { api } from '../../services/api';
 
@@ -9,6 +9,7 @@ const echoListeners: Record<string, ((event: any) => void)[]> = {};
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => ({
     user: { id: 42, name: 'Agent Smith', email: 'agent@conexa.ai' },
+    workspace: { id: 'workspace-1', name: 'Workspace 1' },
     hasPermission: (perm: string) => perm === 'conversations.reply',
     hasRole: () => false,
   }),
@@ -38,6 +39,7 @@ vi.mock('../../services/api', () => ({
     getConversations: vi.fn(),
     getUsers: vi.fn(),
     getChannels: vi.fn(),
+    getTeams: vi.fn(),
     getConversation: vi.fn(),
     getConversationExecution: vi.fn(),
     markConversationAsRead: vi.fn(),
@@ -55,6 +57,7 @@ describe('ConversationsView Agent Closed Filter and Closing Owner', () => {
     vi.clearAllMocks();
     (api.getChannels as any).mockResolvedValue({ data: [] });
     (api.getUsers as any).mockResolvedValue({ data: [] });
+    (api.getTeams as any).mockResolvedValue({ data: [] });
   });
 
   const myClosedConversation = {
@@ -167,23 +170,24 @@ describe('ConversationsView Agent Closed Filter and Closing Owner', () => {
 
     render(<ConversationsView />);
 
+    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
+
     await waitFor(() => {
-      // My active conversation and my closed conversation should appear
+      // The archived tab shows my closed conversation.
       expect(screen.getByText('Cliente Mio')).toBeInTheDocument();
-      expect(screen.getByText('Cliente Activo Mio')).toBeInTheDocument();
     });
 
+    expect(screen.queryByText('Cliente Activo Mio')).not.toBeInTheDocument();
     // Other agent's closed conversation MUST NOT appear
     expect(screen.queryByText('Cliente Ajeno')).not.toBeInTheDocument();
   });
 
   it('filters out closed conversations belonging to another closing agent on .ConversationUpdated', async () => {
-    (api.getConversations as any).mockResolvedValue({
-      data: [myAssignedConversation],
-      current_page: 1,
-      last_page: 1,
-      total: 1,
-    });
+    (api.getConversations as any).mockImplementation((params: { status?: string }) => Promise.resolve(
+      params.status === 'closed'
+        ? { data: [], current_page: 1, last_page: 1, total: 0 }
+        : { data: [myAssignedConversation], current_page: 1, last_page: 1, total: 1 }
+    ));
     (api.getConversation as any).mockResolvedValue({ data: myAssignedConversation });
 
     render(<ConversationsView />);
@@ -192,9 +196,14 @@ describe('ConversationsView Agent Closed Filter and Closing Owner', () => {
       expect(screen.getByText('Cliente Activo Mio')).toBeInTheDocument();
     });
 
+    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
+    await waitFor(() => {
+      expect(screen.queryByText('Cliente Activo Mio')).not.toBeInTheDocument();
+    });
+
     // Simulate ConversationUpdated event closing another agent's conversation
     act(() => {
-      const callbacks = echoListeners['inbox:.ConversationUpdated'] || [];
+      const callbacks = echoListeners['workspace.workspace-1.inbox:.ConversationUpdated'] || [];
       callbacks.forEach((cb) =>
         cb({
           id: 'conv-other-closed',
@@ -211,7 +220,7 @@ describe('ConversationsView Agent Closed Filter and Closing Owner', () => {
 
     // Simulate ConversationUpdated for current agent's closed conversation
     act(() => {
-      const callbacks = echoListeners['inbox:.ConversationUpdated'] || [];
+      const callbacks = echoListeners['workspace.workspace-1.inbox:.ConversationUpdated'] || [];
       callbacks.forEach((cb) =>
         cb({
           id: 'conv-my-new-closed',

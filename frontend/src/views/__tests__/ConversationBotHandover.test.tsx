@@ -19,6 +19,7 @@ vi.mock('../../services/api', () => ({
     getConversations: vi.fn(),
     getUsers: vi.fn(),
     getChannels: vi.fn(),
+    getTeams: vi.fn(),
     getConversation: vi.fn(),
     getConversationExecution: vi.fn(),
     markConversationAsRead: vi.fn(),
@@ -75,6 +76,7 @@ describe('ConversationBotHandover in ConversationsView', () => {
     });
     (api.getUsers as any).mockResolvedValue({ data: [] });
     (api.getChannels as any).mockResolvedValue({ data: [{ id: 'ch-1', name: 'WhatsApp Soporte' }] });
+    (api.getTeams as any).mockResolvedValue({ data: [] });
     (api.getConversation as any).mockResolvedValue({ data: baseConversation });
     (api.getConversationExecution as any).mockRejectedValue(new Error('no execution'));
     (api.markConversationAsRead as any).mockResolvedValue({});
@@ -103,7 +105,7 @@ describe('ConversationBotHandover in ConversationsView', () => {
 
     const restartBtn = screen.getByTestId('restart-flow-btn');
     expect(restartBtn).toBeInTheDocument();
-    expect(restartBtn).toHaveTextContent('Reiniciar Flujo');
+    expect(restartBtn).toHaveTextContent('Reiniciar flujo');
 
     // Paused banner should not be present
     expect(screen.queryByTestId('paused-bot-banner')).not.toBeInTheDocument();

@@ -4,6 +4,7 @@ import { UsersAndSessionsTab } from '../Analytics/UsersAndSessionsTab';
 import { ConversationsView } from '../ConversationsView';
 import { api } from '../../services/api';
 import { useAuth } from '../../context/useAuth';
+import { ToastProvider } from '../../context/ToastContext';
 
 // Mock AuthContext
 vi.mock('../../context/useAuth', () => ({
@@ -14,6 +15,7 @@ vi.mock('../../context/useAuth', () => ({
 vi.mock('../../services/api', () => ({
   api: {
     getChannels: vi.fn(),
+    getTeams: vi.fn(),
     getTags: vi.fn(),
     createTag: vi.fn(),
     syncConversationTags: vi.fn(),
@@ -43,6 +45,12 @@ vi.mock('../../services/echo', () => ({
 }));
 
 describe('ConversationTagAndTransfer (Frontend)', () => {
+  const renderConversations = () => render(
+    <ToastProvider>
+      <ConversationsView />
+    </ToastProvider>
+  );
+
   const mockTags = [
     { id: 'tag-1', name: 'Petición de Oración', color: '#8B5CF6' },
     { id: 'tag-2', name: 'Promesa de Ofrenda', color: '#F59E0B' },
@@ -66,6 +74,7 @@ describe('ConversationTagAndTransfer (Frontend)', () => {
     (api.getChannels as any).mockResolvedValue({
       data: [{ id: 'chan-1', name: 'WhatsApp Central', type: 'whatsapp' }],
     });
+    (api.getTeams as any).mockResolvedValue({ data: [] });
 
     (api.getTags as any).mockResolvedValue({
       data: mockTags,
@@ -168,7 +177,7 @@ describe('ConversationTagAndTransfer (Frontend)', () => {
         counts: { all: 1, assigned: 1 },
       });
 
-      render(<ConversationsView />);
+      renderConversations();
 
       await waitFor(() => {
         expect(screen.getByTestId('inbox-tag-filter')).toBeInTheDocument();
@@ -222,7 +231,7 @@ describe('ConversationTagAndTransfer (Frontend)', () => {
         data: { id: 'conv-1', assigned_user_id: 3 },
       });
 
-      render(<ConversationsView />);
+      renderConversations();
 
       await waitFor(() => {
         expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
@@ -282,9 +291,9 @@ describe('ConversationTagAndTransfer (Frontend)', () => {
 
       // Assert toast notification shown
       await waitFor(() => {
-        expect(screen.getByTestId('inbox-toast-notification')).toBeInTheDocument();
+        expect(screen.getByText('Conversación transferida a Agente Bernardo.')).toBeInTheDocument();
       });
-      expect(screen.getByTestId('inbox-toast-notification')).toHaveTextContent('Conversación transferida a Agente Bernardo.');
+      expect(screen.getByText('Conversación transferida a Agente Bernardo.')).toBeInTheDocument();
     });
 
     it('hides tag creation form inside popover for agent role and shows it for supervisor', async () => {
@@ -294,7 +303,7 @@ describe('ConversationTagAndTransfer (Frontend)', () => {
         hasPermission: vi.fn((perm: string) => perm === 'conversations.reply' || perm === 'conversations.view_assigned'),
       });
 
-      const { unmount } = render(<ConversationsView />);
+      const { unmount } = renderConversations();
 
       await waitFor(() => {
         expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
@@ -326,7 +335,7 @@ describe('ConversationTagAndTransfer (Frontend)', () => {
         hasPermission: vi.fn(() => true),
       });
 
-      render(<ConversationsView />);
+      renderConversations();
 
       await waitFor(() => {
         expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
