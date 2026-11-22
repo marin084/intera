@@ -2,6 +2,14 @@ name: INTERA multitenancy E2E
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/e2e-multitenancy.yml'
+  schedule:
+    - cron: '0 6 * * 1'
 
 permissions:
   contents: read
@@ -33,20 +41,27 @@ jobs:
         working-directory: frontend
         run: npx playwright install --with-deps chromium webkit
 
+      - name: Generate ephemeral E2E credentials
+        shell: bash
+        run: |
+          echo "E2E_PLATFORM_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_A_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_B_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "E2E_SHARED_AGENT_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
       - name: Start local stack
         env:
           APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
           APP_ENV: testing
           APP_DEBUG: false
-          INITIAL_ADMIN_EMAIL: e2e.platform@intera.test
-          INITIAL_ADMIN_NAME: E2E Platform Admin
-          INITIAL_ADMIN_PASSWORD: E2EPlatformPass@2026
         run: docker compose up -d --build
 
       - name: Wait for frontend health
         run: |
           for attempt in {1..60}; do
-            if curl --fail --silent http://localhost:3100/health >/dev/null; then
+            if curl --fail --silent http://localhost:3100/health >/dev/null \
+              && curl --fail --silent http://localhost:3100/health/ready >/dev/null \
+              && curl --fail --silent http://localhost:3100/api/health/realtime >/dev/null; then
               exit 0
             fi
             sleep 3

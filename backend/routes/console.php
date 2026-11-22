@@ -14,10 +14,8 @@ Artisan::command('test:setup-e2e', function () {
     $this->call(SetupE2ETestCommand::class);
 })->purpose('Prepare E2E test database and users');
 
-Artisan::command('test:setup-multitenancy-e2e {--force : Allow the disposable fixture in production}', function () {
-    $this->call(SetupMultitenancyE2ECommand::class, [
-        '--force' => (bool) $this->option('force'),
-    ]);
+Artisan::command('test:setup-multitenancy-e2e', function () {
+    return $this->call(SetupMultitenancyE2ECommand::class);
 })->purpose('Prepare the disposable two-workspace multitenancy E2E fixture');
 
 Schedule::command('webchat:sessions:prune')
