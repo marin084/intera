@@ -385,7 +385,7 @@ export const ConversationsView: React.FC = () => {
   }, [user?.id, activeTab, searchQuery, selectedAgentFilter, selectedChannelFilter, selectedTagFilter, selectedTeamFilter, currentPage]);
 
   useEffect(() => {
-    if (!canSeeTeamQueues) return;
+    if (!canSeeTeamQueues || typeof api.getTeams !== 'function') return;
     let mounted = true;
     api.getTeams().then((response) => {
       if (mounted) {
