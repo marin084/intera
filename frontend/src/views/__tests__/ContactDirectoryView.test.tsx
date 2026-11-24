@@ -18,7 +18,14 @@ vi.mock('../../services/api', () => ({
     getContact: vi.fn(),
     getContactsImportPreview: vi.fn(),
     importContacts: vi.fn(),
-    getContactsExportUrl: vi.fn(() => '/api/v1/contacts/export'),
+    getContactsExportUrl: vi.fn((params: { search?: string; created_from?: string; created_to?: string } = {}) => {
+      const query = new URLSearchParams();
+      if (params.search) query.set('search', params.search);
+      if (params.created_from) query.set('created_from', params.created_from);
+      if (params.created_to) query.set('created_to', params.created_to);
+      const suffix = query.toString();
+      return `/api/v1/contacts/export${suffix ? `?${suffix}` : ''}`;
+    }),
   },
 }));
 
@@ -96,6 +103,28 @@ describe('ContactDirectoryView', () => {
     render(<ContactDirectoryView />);
     await waitFor(() => expect(screen.getByText('Página 1 de 2')).toBeInTheDocument());
     expect(screen.getByRole('button', { name: 'Siguiente' })).toBeEnabled();
+  });
+
+  it('lets administrators choose page size and export a filtered date range', async () => {
+    render(<ContactDirectoryView />);
+    await waitFor(() => expect(screen.getByText('Ana Pérez')).toBeInTheDocument());
+
+    fireEvent.change(screen.getByLabelText('Buscar contactos'), { target: { value: 'Ana' } });
+    fireEvent.change(screen.getByLabelText('Contactos por página'), { target: { value: '50' } });
+
+    await waitFor(() => expect(api.getContacts).toHaveBeenCalledWith(expect.objectContaining({ search: 'Ana', page: 1, per_page: 50 })));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exportar CSV' }));
+    expect(screen.getByRole('heading', { name: 'Exportar contactos' })).toBeInTheDocument();
+    expect(screen.getByText(/También se aplicará la búsqueda/)).toHaveTextContent('Ana');
+
+    fireEvent.change(screen.getByLabelText('Fecha de registro desde'), { target: { value: '2026-01-01' } });
+    fireEvent.change(screen.getByLabelText('Fecha de registro hasta'), { target: { value: '2026-12-31' } });
+
+    const download = screen.getByRole('link', { name: 'Descargar CSV' });
+    expect(download).toHaveAttribute('href', expect.stringContaining('search=Ana'));
+    expect(download).toHaveAttribute('href', expect.stringContaining('created_from=2026-01-01'));
+    expect(download).toHaveAttribute('href', expect.stringContaining('created_to=2026-12-31'));
   });
 
   it('shows the empty state when no contacts match', async () => {

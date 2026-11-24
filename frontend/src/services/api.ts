@@ -226,8 +226,13 @@ class ApiService {
     });
   }
 
-  getContactsExportUrl() {
-    return API_URL + '/contacts/export';
+  getContactsExportUrl(params: { search?: string; created_from?: string; created_to?: string } = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.set('search', params.search);
+    if (params.created_from) query.set('created_from', params.created_from);
+    if (params.created_to) query.set('created_to', params.created_to);
+    const qs = query.toString();
+    return `${API_URL}/contacts/export${qs ? `?${qs}` : ''}`;
   }
 
   async getTeams() {

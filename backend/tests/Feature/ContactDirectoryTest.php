@@ -223,6 +223,46 @@ class ContactDirectoryTest extends TestCase
         $this->assertStringContainsString("'+50688887777", $exportContent);
     }
 
+    public function test_admin_can_export_contacts_with_search_and_created_date_range(): void
+    {
+        $included = Contact::withoutGlobalScopes()->create([
+            'workspace_id' => $this->workspace->id,
+            'display_name' => 'Contacto incluido',
+            'external_identifier' => 'included-1',
+            'email' => 'included@example.test',
+            'metadata' => ['directory_source' => 'import', 'contact_import' => ['linked_channel_ids' => []]],
+        ]);
+        $included->created_at = now()->startOfYear()->addDays(9);
+        $included->saveQuietly();
+
+        $excluded = Contact::withoutGlobalScopes()->create([
+            'workspace_id' => $this->workspace->id,
+            'display_name' => 'Contacto fuera',
+            'external_identifier' => 'excluded-1',
+            'email' => 'excluded@example.test',
+            'metadata' => ['directory_source' => 'import', 'contact_import' => ['linked_channel_ids' => []]],
+        ]);
+        $excluded->created_at = now()->startOfYear()->addMonths(2);
+        $excluded->saveQuietly();
+
+        $from = now()->startOfYear()->format('Y-m-d');
+        $to = now()->startOfYear()->addMonth()->endOfMonth()->format('Y-m-d');
+        $export = $this->actingAs($this->admin, 'sanctum')->get('/api/v1/contacts/export?search=incluido&created_from='.$from.'&created_to='.$to);
+
+        $export->assertOk();
+        $content = $export->streamedContent();
+        $this->assertStringContainsString('included@example.test', $content);
+        $this->assertStringNotContainsString('excluded@example.test', $content);
+    }
+
+    public function test_export_rejects_a_date_range_with_an_earlier_end_date(): void
+    {
+        $this->actingAs($this->admin, 'sanctum')
+            ->getJson('/api/v1/contacts/export?created_from=2026-12-31&created_to=2026-01-01')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['created_to']);
+    }
+
     public function test_agents_cannot_import_or_export_contacts(): void
     {
         $file = UploadedFile::fake()->createWithContent('contactos.csv', "id,email\none,one@example.test\n");

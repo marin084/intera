@@ -88,7 +88,7 @@ class ContactCsvService
     }
 
     /** @param iterable<Contact> $contacts */
-    public function writeExport(iterable $contacts, mixed $handle): void
+    public function writeExport(iterable $contacts, mixed $handle, string $workspaceId): void
     {
         // UTF-8 BOM improves compatibility with Excel while preserving accents.
         fwrite($handle, "\xEF\xBB\xBF");
@@ -106,7 +106,7 @@ class ContactCsvService
                 $import['language'] ?? '',
                 $contact->country ?? '',
                 $this->joinList($import['platforms'] ?? []),
-                $this->joinList($this->linkedChannelNames($import['linked_channel_ids'] ?? [])),
+                $this->joinList($this->linkedChannelNames($import['linked_channel_ids'] ?? [], $workspaceId)),
                 $this->joinList($import['phone_numbers'] ?? ($contact->phone ? [$contact->phone] : [])),
                 $this->joinList($import['emails'] ?? ($contact->email ? [$contact->email] : [])),
                 $this->joinList($import['whatsapp_bsuids'] ?? []),
@@ -390,7 +390,7 @@ class ContactCsvService
     }
 
     /** @param mixed $channelIds @return list<string> */
-    private function linkedChannelNames(mixed $channelIds): array
+    private function linkedChannelNames(mixed $channelIds, string $workspaceId): array
     {
         if (! is_array($channelIds) || $channelIds === []) {
             return [];
@@ -402,6 +402,7 @@ class ContactCsvService
         }
 
         return Channel::query()
+            ->forWorkspace($workspaceId)
             ->whereIn('id', $ids)
             ->orderBy('name')
             ->pluck('name')

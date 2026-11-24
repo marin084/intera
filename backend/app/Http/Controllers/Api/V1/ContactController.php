@@ -30,10 +30,12 @@ class ContactController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
-        $search = trim((string) ($validated['search'] ?? ''));
         $perPage = (int) ($validated['per_page'] ?? 25);
 
-        $query = $this->eligibleContactsQuery()
+        $query = $this->applyContactFilters(
+            $this->eligibleContactsQuery(),
+            $validated['search'] ?? null,
+        )
             ->withCount([
                 'conversations as conversations_count' => fn (Builder $conversationQuery) =>
                     $conversationQuery->where('is_simulation', false),
@@ -42,19 +44,6 @@ class ContactController extends Controller
                 'conversations as last_activity_at' => fn (Builder $conversationQuery) =>
                     $conversationQuery->where('is_simulation', false),
             ], 'last_message_at')
-            ->when($search !== '', function (Builder $contactQuery) use ($search): void {
-                $likeOperator = $contactQuery->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
-                $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
-                $likePattern = '%'.$escaped.'%';
-
-                $contactQuery->where(function (Builder $nestedQuery) use ($likeOperator, $likePattern): void {
-                    $nestedQuery
-                        ->where('display_name', $likeOperator, $likePattern)
-                        ->orWhere('email', $likeOperator, $likePattern)
-                        ->orWhere('phone', $likeOperator, $likePattern)
-                        ->orWhere('external_identifier', $likeOperator, $likePattern);
-                });
-            })
             ->orderByDesc('last_activity_at')
             ->orderByDesc('created_at');
 
@@ -211,16 +200,32 @@ class ContactController extends Controller
     {
         $this->ensureDirectoryAccess($request);
 
-        $filename = 'intera-contactos-'.($request->user()->active_workspace_id ?? 'workspace').'-'.now()->format('Ymd-His').'.csv';
-        $query = $this->eligibleContactsQuery()->orderBy('id');
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'created_from' => ['nullable', 'date'],
+            'created_to' => ['nullable', 'date', 'after_or_equal:created_from'],
+        ]);
 
-        return response()->streamDownload(function () use ($query, $service): void {
+        $workspaceId = (string) (app()->bound('current_workspace_id')
+            ? app('current_workspace_id')
+            : ($request->user()->active_workspace_id ?? ''));
+        abort_unless($workspaceId !== '', 422, 'No hay un Workspace activo para exportar contactos.');
+
+        $filename = 'intera-contactos-'.($request->user()->active_workspace_id ?? 'workspace').'-'.now()->format('Ymd-His').'.csv';
+        $query = $this->applyContactFilters(
+            $this->eligibleContactsQuery(),
+            $validated['search'] ?? null,
+            $validated['created_from'] ?? null,
+            $validated['created_to'] ?? null,
+        )->orderBy('id');
+
+        return response()->streamDownload(function () use ($query, $service, $workspaceId): void {
             $handle = fopen('php://output', 'wb');
             if ($handle === false) {
                 return;
             }
 
-            $service->writeExport($query->cursor(), $handle);
+            $service->writeExport($query->cursor(), $handle, $workspaceId);
             fclose($handle);
         }, $filename, ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
@@ -262,6 +267,28 @@ class ContactController extends Controller
             || (bool) $user?->hasRole(['super_admin', 'admin']);
 
         abort_unless($isAllowed, 403, 'Solo los administradores pueden consultar el directorio de contactos.');
+    }
+
+    private function applyContactFilters(Builder $query, ?string $search = null, ?string $createdFrom = null, ?string $createdTo = null): Builder
+    {
+        $search = trim((string) $search);
+
+        return $query
+            ->when($search !== '', function (Builder $contactQuery) use ($search): void {
+                $likeOperator = $contactQuery->getConnection()->getDriverName() === 'pgsql' ? 'ilike' : 'like';
+                $escaped = str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $search);
+                $likePattern = '%'.$escaped.'%';
+
+                $contactQuery->where(function (Builder $nestedQuery) use ($likeOperator, $likePattern): void {
+                    $nestedQuery
+                        ->where('display_name', $likeOperator, $likePattern)
+                        ->orWhere('email', $likeOperator, $likePattern)
+                        ->orWhere('phone', $likeOperator, $likePattern)
+                        ->orWhere('external_identifier', $likeOperator, $likePattern);
+                });
+            })
+            ->when($createdFrom !== null && $createdFrom !== '', fn (Builder $contactQuery) => $contactQuery->whereDate('created_at', '>=', $createdFrom))
+            ->when($createdTo !== null && $createdTo !== '', fn (Builder $contactQuery) => $contactQuery->whereDate('created_at', '<=', $createdTo));
     }
 
     private function eligibleContactsQuery(): Builder

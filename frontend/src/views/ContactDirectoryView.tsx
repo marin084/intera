@@ -53,6 +53,7 @@ export const ContactDirectoryView: React.FC = () => {
   const [detailError, setDetailError] = useState('');
   const [meta, setMeta] = useState({ current_page: 1, last_page: 1, total: 0 });
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
   const detailPanelRef = useRef<HTMLDivElement>(null);
   const detailCloseRef = useRef<HTMLButtonElement>(null);
   const detailTriggerRef = useRef<HTMLButtonElement>(null);
@@ -61,6 +62,9 @@ export const ContactDirectoryView: React.FC = () => {
   const importCloseRef = useRef<HTMLButtonElement>(null);
   const importTriggerRef = useRef<HTMLButtonElement>(null);
   const importLoadingRef = useRef(false);
+  const exportPanelRef = useRef<HTMLDivElement>(null);
+  const exportCloseRef = useRef<HTMLButtonElement>(null);
+  const exportTriggerRef = useRef<HTMLButtonElement>(null);
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreview, setImportPreview] = useState<ContactImportPreview | null>(null);
   const [importMapping, setImportMapping] = useState<Record<string, string | null>>({});
@@ -69,13 +73,16 @@ export const ContactDirectoryView: React.FC = () => {
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState('');
   const [importResultErrors, setImportResultErrors] = useState<Array<{ row: number; message: string }>>([]);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
   importLoadingRef.current = importLoading;
 
   const loadContacts = useCallback(async (term = search, targetPage = page) => {
     setLoading(true);
     setError('');
     try {
-      const response = await api.getContacts({ search: term.trim() || undefined, page: targetPage, per_page: 25 });
+      const response = await api.getContacts({ search: term.trim() || undefined, page: targetPage, per_page: pageSize });
       setContacts(response.data);
       setMeta({ current_page: response.meta.current_page, last_page: response.meta.last_page, total: response.meta.total });
     } catch (cause: any) {
@@ -83,7 +90,7 @@ export const ContactDirectoryView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [page, search]);
+  }, [page, pageSize, search]);
 
   useEffect(() => {
     if (!isAllowed) return;
@@ -229,6 +236,39 @@ export const ContactDirectoryView: React.FC = () => {
     };
   }, [importOpen]);
 
+  useEffect(() => {
+    if (!exportOpen) return;
+
+    const previousFocus = exportTriggerRef.current || (document.activeElement as HTMLElement | null);
+    exportCloseRef.current?.focus();
+    const panel = exportPanelRef.current;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setExportOpen(false);
+        return;
+      }
+      if (event.key !== 'Tab' || !panel) return;
+      const focusable = Array.from(panel.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')).filter((element) => !element.hasAttribute('disabled'));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      previousFocus?.focus();
+    };
+  }, [exportOpen]);
+
+  const exportRangeInvalid = Boolean(exportFrom && exportTo && exportFrom > exportTo);
   if (!isAllowed) {
     return (
       <div className="card" role="alert">
@@ -256,9 +296,9 @@ export const ContactDirectoryView: React.FC = () => {
             <button ref={importTriggerRef} className="btn btn-secondary btn-sm" type="button" onClick={(event) => { importTriggerRef.current = event.currentTarget; importFileRef.current?.click(); }} disabled={importLoading}>
               <Upload size={14} aria-hidden="true" /> Importar CSV
             </button>
-            <a className="btn btn-secondary btn-sm" href={api.getContactsExportUrl()} download>
+            <button ref={exportTriggerRef} className="btn btn-secondary btn-sm" type="button" onClick={(event) => { exportTriggerRef.current = event.currentTarget; setExportOpen(true); }}>
               <Download size={14} aria-hidden="true" /> Exportar CSV
-            </a>
+            </button>
             <input ref={importFileRef} type="file" accept=".csv,text/csv" aria-label="Seleccionar CSV" onChange={(event) => void chooseImportFile(event)} style={{ display: 'none' }} />
           </div>
         </div>
@@ -271,6 +311,14 @@ export const ContactDirectoryView: React.FC = () => {
           <button className="btn btn-secondary" type="button" onClick={() => void loadContacts(search, page)} disabled={loading}>
             <RefreshCw size={15} aria-hidden="true" /> Actualizar
           </button>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+            <span>Mostrar</span>
+            <select aria-label="Contactos por página" className="form-select" style={{ width: 'auto' }} value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }}>
+              <option value={25}>25</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </label>
         </div>
 
         {loading ? (
@@ -387,6 +435,57 @@ export const ContactDirectoryView: React.FC = () => {
               <button className="btn btn-primary" type="button" onClick={() => void completeImport()} disabled={importLoading || importResultErrors.length > 0 || !importPreview || !destinationChannelId || (!importMapping.external_identifier && !importMapping.email && !importMapping.phone)}>
                 {importLoading ? 'Importando…' : importResultErrors.length > 0 ? 'Importación revisada' : 'Importar contactos'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {exportOpen && (
+        <div className="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="contact-export-title" onMouseDown={(event) => { if (event.target === event.currentTarget) setExportOpen(false); }}>
+          <div ref={exportPanelRef} className="modal-content" style={{ width: 'min(520px, 96vw)', maxWidth: 'min(520px, 96vw)' }}>
+            <div className="modal-header">
+              <div>
+                <h3 id="contact-export-title" style={{ margin: 0 }}>Exportar contactos</h3>
+                <p style={{ margin: '0.3rem 0 0', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                  Descarga los contactos del Workspace activo. La búsqueda actual también se aplicará.
+                </p>
+              </div>
+              <button ref={exportCloseRef} className="btn btn-secondary btn-sm" type="button" aria-label="Cerrar exportación" onClick={() => setExportOpen(false)}><X size={16} /></button>
+            </div>
+            <div style={{ padding: '1rem' }}>
+              <p style={{ margin: '0 0 0.8rem', color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                Opcionalmente, limita la descarga por fecha de registro.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.7rem' }}>
+                <label style={{ display: 'grid', gap: '0.3rem', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                  <span>Fecha de registro desde</span>
+                  <input aria-label="Fecha de registro desde" className="form-input" type="date" value={exportFrom} max={exportTo || undefined} onChange={(event) => setExportFrom(event.target.value)} />
+                </label>
+                <label style={{ display: 'grid', gap: '0.3rem', color: 'var(--text-primary)', fontSize: '0.82rem' }}>
+                  <span>Fecha de registro hasta</span>
+                  <input aria-label="Fecha de registro hasta" className="form-input" type="date" value={exportTo} min={exportFrom || undefined} onChange={(event) => setExportTo(event.target.value)} />
+                </label>
+              </div>
+              {search.trim() && <p style={{ margin: '0.8rem 0 0', color: 'var(--text-muted)', fontSize: '0.8rem' }}>También se aplicará la búsqueda: “{search.trim()}”.</p>}
+              {exportRangeInvalid && <div role="alert" style={{ marginTop: '0.8rem', padding: '0.7rem', border: '1px solid #fecaca', background: '#fff7f7', color: '#b42318', borderRadius: '8px', fontSize: '0.82rem' }}>La fecha final debe ser igual o posterior a la fecha inicial.</div>}
+            </div>
+            <div className="modal-footer" style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.6rem' }}>
+              <button className="btn btn-secondary" type="button" onClick={() => setExportOpen(false)}>Cancelar</button>
+              <a
+                className="btn btn-primary"
+                href={api.getContactsExportUrl({ search: search.trim() || undefined, created_from: exportFrom || undefined, created_to: exportTo || undefined })}
+                download
+                aria-disabled={exportRangeInvalid ? 'true' : undefined}
+                onClick={(event) => {
+                  if (exportRangeInvalid) {
+                    event.preventDefault();
+                    return;
+                  }
+                  setExportOpen(false);
+                }}
+              >
+                <Download size={15} aria-hidden="true" /> Descargar CSV
+              </a>
             </div>
           </div>
         </div>
