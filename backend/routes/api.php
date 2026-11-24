@@ -227,6 +227,14 @@ Route::prefix('v1')->group(function () {
         Route::post('/conversations/{conversation}/transfer', [ConversationController::class, 'transfer'])->middleware('permission:conversations.view_assigned,conversations.reply,conversations.assign');
         Route::post('/conversations/{conversation}/tags', [ConversationController::class, 'syncTags'])->middleware('permission:conversations.view_assigned,conversations.reply');
         Route::delete('/conversations/{conversation}/tags/{tag}', [ConversationController::class, 'removeTag'])->middleware('permission:conversations.view_assigned,conversations.reply');
+        // Contact directory import/export must stay inside the active tenant
+        // context. Import is intentionally admin-only and never creates a
+        // conversation or channel relation.
+        Route::post('/contacts/import/preview', [ContactController::class, 'previewImport'])->middleware('permission:contacts.manage');
+        Route::post('/contacts/import', [ContactController::class, 'importCsv'])->middleware('permission:contacts.manage');
+        Route::get('/contacts/export', [ContactController::class, 'export'])->middleware('permission:contacts.view');
+        Route::get('/contacts', [ContactController::class, 'index'])->middleware('permission:contacts.view');
+        Route::get('/contacts/{contact}', [ContactController::class, 'show'])->middleware('permission:contacts.view');
         Route::patch('/contacts/{contact}', [ContactController::class, 'update'])->middleware('permission:conversations.view_assigned,conversations.reply');
 
         // Tags

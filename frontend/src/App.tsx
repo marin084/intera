@@ -8,6 +8,7 @@ import { Layout } from './components/Layout';
 
 // Dynamic lazy imports for code-splitting heavy views and the flow canvas
 const UsersView = lazy(() => import('./views/UsersView').then((m) => ({ default: m.UsersView })));
+const ContactDirectoryView = lazy(() => import('./views/ContactDirectoryView').then((m) => ({ default: m.ContactDirectoryView })));
 const RolesView = lazy(() => import('./views/RolesView').then((m) => ({ default: m.RolesView })));
 const ChannelsView = lazy(() => import('./views/ChannelsView').then((m) => ({ default: m.ChannelsView })));
 const FlowsView = lazy(() => import('./views/FlowsView').then((m) => ({ default: m.FlowsView })));
@@ -112,6 +113,7 @@ const TAB_PATHS: Record<string, string> = {
   analytics: '/analytics',
   channels: '/channels',
   users: '/users',
+  contacts: '/contacts',
   roles: '/roles',
   audit: '/audit',
   'admin-settings': '/settings',
@@ -208,6 +210,7 @@ const MainApp: React.FC = () => {
     if (tab === 'analytics') return hasPermission('flows.view');
     if (tab === 'channels') return hasPermission('channels.view') || hasPermission('channels.manage');
     if (tab === 'users') return hasPermission('users.view') || hasPermission('users.manage');
+    if (tab === 'contacts') return isPlatformAdmin || (typeof hasRole === 'function' && (hasRole('super_admin') || hasRole('admin')));
     if (tab === 'roles') return hasPermission('roles.view') || hasPermission('roles.manage');
     if (tab === 'audit') return isPlatformAdmin;
     if (tab === 'admin-settings') return (typeof hasRole === 'function' && hasRole('admin')) || (typeof hasRole === 'function' && hasRole('super_admin'));
@@ -323,6 +326,8 @@ const MainApp: React.FC = () => {
         return <ChannelsView />;
       case 'users':
         return <UsersView />;
+      case 'contacts':
+        return <ContactDirectoryView />;
       case 'roles':
         return <RolesView />;
       case 'audit':

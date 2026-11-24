@@ -13,6 +13,53 @@ export interface User {
   team_ids?: string[];
 }
 
+export interface ContactDirectoryChannel {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface ContactDirectoryConversation {
+  id: string;
+  status: string;
+  channel: ContactDirectoryChannel | null;
+  started_at: string | null;
+  last_activity_at: string | null;
+  closed_at: string | null;
+}
+
+export interface ContactDirectoryItem {
+  id: string;
+  display_name: string | null;
+  external_identifier: string | null;
+  email: string | null;
+  phone: string | null;
+  country: string | null;
+  conversations_count: number;
+  last_activity_at: string | null;
+  channels: ContactDirectoryChannel[];
+  variables: Record<string, unknown>;
+  variable_count: number;
+  attributes: Record<string, unknown>;
+  conversations?: ContactDirectoryConversation[];
+}
+
+export interface ContactImportPreview {
+  headers: string[];
+  sample: Array<Record<string, string>>;
+  row_count: number;
+  suggested_mapping: Record<string, string | null>;
+  available_channels: ContactDirectoryChannel[];
+}
+
+export interface ContactImportResult {
+  total_rows: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  errors: Array<{ row: number; message: string }>;
+}
+
 export interface WorkspaceMembership {
   id: string;
   name: string;
