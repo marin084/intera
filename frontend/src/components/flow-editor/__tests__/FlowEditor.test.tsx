@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { FlowEditor } from '../FlowEditor';
+import { ToastProvider } from '../../../context/ToastContext';
 import { api } from '../../../services/api';
 import type { Flow, FlowVersion } from '../../../types';
 
@@ -14,6 +16,12 @@ vi.mock('../../../services/api', () => ({
     createFlowVersion: vi.fn(),
   },
 }));
+
+const EditorWithToast = (props: ComponentProps<typeof FlowEditor>) => (
+  <ToastProvider>
+    <FlowEditor {...props} />
+  </ToastProvider>
+);
 
 describe('FlowEditor', () => {
   const mockFlow: Flow = {
@@ -110,7 +118,7 @@ describe('FlowEditor', () => {
     vi.mocked(api.getFlow).mockResolvedValueOnce({ data: mockFlow } as any);
     vi.mocked(api.getFlowVersion).mockResolvedValueOnce({ data: mockVersionDraft } as any);
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     // Initial loading indicator
     expect(screen.getByText(/Cargando constructor de flujos/i)).toBeInTheDocument();
@@ -137,7 +145,7 @@ describe('FlowEditor', () => {
     vi.mocked(api.getFlow).mockResolvedValueOnce({ data: publishedFlow } as any);
     vi.mocked(api.getFlowVersion).mockResolvedValueOnce({ data: mockVersionPublished } as any);
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-pub" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-pub" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByText(/publicada — solo lectura/i)).toBeInTheDocument();
@@ -155,7 +163,7 @@ describe('FlowEditor', () => {
       data: { updated_at: '2026-10-04T10:05:00Z' },
     } as any);
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -212,7 +220,7 @@ describe('FlowEditor', () => {
     conflictError.status = 409;
     vi.mocked(api.saveFlowVersionGraph).mockRejectedValueOnce(conflictError);
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -246,7 +254,7 @@ describe('FlowEditor', () => {
       ],
     } as any);
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -279,7 +287,7 @@ describe('FlowEditor', () => {
       data: mockVersionPublished,
     });
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -340,7 +348,7 @@ describe('FlowEditor', () => {
       },
     } as any);
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-published" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-published" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -372,7 +380,7 @@ describe('FlowEditor', () => {
     vi.mocked(api.getFlow).mockResolvedValue({ data: mockFlow });
     vi.mocked(api.getFlowVersion).mockResolvedValue({ data: mockVersionDraft });
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -402,7 +410,7 @@ describe('FlowEditor', () => {
     vi.mocked(api.getFlow).mockResolvedValue({ data: mockFlow });
     vi.mocked(api.getFlowVersion).mockResolvedValue({ data: mockVersionDraft });
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);
@@ -433,7 +441,7 @@ describe('FlowEditor', () => {
     vi.mocked(api.getFlow).mockResolvedValue({ data: mockFlow });
     vi.mocked(api.getFlowVersion).mockResolvedValue({ data: mockVersionDraft });
 
-    render(<FlowEditor flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
+    render(<EditorWithToast flowId="flow-123" initialVersionId="ver-draft" onBack={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getAllByText('Flujo de Ventas').length).toBeGreaterThanOrEqual(1);

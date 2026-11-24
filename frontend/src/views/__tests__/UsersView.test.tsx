@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { UsersView } from '../UsersView';
 import { api } from '../../services/api';
+import { ToastProvider } from '../../context/ToastContext';
+
+const renderUsersView = () => render(<ToastProvider><UsersView /></ToastProvider>);
 
 const mockHasPermission = vi.fn();
 
@@ -59,7 +62,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('renders user table with active and inactive indicators', async () => {
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument();
@@ -71,7 +74,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('opens ConfirmModal when clicking Desactivar and cancels without API call', async () => {
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument();
@@ -97,7 +100,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('deactivates active user when confirmed in ConfirmModal', async () => {
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument();
@@ -115,14 +118,14 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('user-action-success-alert')).toHaveTextContent(
+      expect(screen.getByRole('status')).toHaveTextContent(
         'El usuario «Carlos Mendoza» fue desactivado correctamente.'
       );
     });
   });
 
   it('opens ConfirmModal when clicking Activar on inactive user and cancels without API call', async () => {
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Lucía Fernández')).toBeInTheDocument();
@@ -148,7 +151,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('reactivates inactive user when confirmed in ConfirmModal', async () => {
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Lucía Fernández')).toBeInTheDocument();
@@ -166,14 +169,14 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId('user-action-success-alert')).toHaveTextContent(
+      expect(screen.getByRole('status')).toHaveTextContent(
         'El usuario «Lucía Fernández» fue reactivado correctamente.'
       );
     });
   });
 
   it('closes ConfirmModal on Escape key without executing API mutation', async () => {
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument();
@@ -195,7 +198,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
   it('displays error alert when updateUserStatus API call fails', async () => {
     vi.mocked(api.updateUserStatus).mockRejectedValueOnce(new Error('Fallo de red en el servidor.'));
 
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument();
@@ -208,7 +211,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
-      expect(screen.getByTestId('user-action-error-alert')).toHaveTextContent(
+      expect(screen.getByRole('alert')).toHaveTextContent(
         'Fallo de red en el servidor.'
       );
     });
@@ -217,7 +220,7 @@ describe('UsersView Confirmation Modals (ConfirmModal)', () => {
   it('hides action buttons when user does not have users.manage permission', async () => {
     mockHasPermission.mockReturnValue(false);
 
-    render(<UsersView />);
+    renderUsersView();
 
     await waitFor(() => {
       expect(screen.getByText('Carlos Mendoza')).toBeInTheDocument();

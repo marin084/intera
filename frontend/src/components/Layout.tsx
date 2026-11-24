@@ -8,6 +8,7 @@ import {
   BarChart3,
   Radio,
   Users,
+  ContactRound,
   UsersRound,
   Shield,
   FileText,
@@ -160,6 +161,12 @@ export const Layout: React.FC<LayoutProps> = ({ currentTab, onSelectTab, childre
       label: 'Usuarios',
       icon: Users,
       visible: hasPermission('users.view') || hasPermission('users.manage'),
+    },
+    {
+      id: 'contacts',
+      label: 'Contactos',
+      icon: ContactRound,
+      visible: isPlatformAdmin || (typeof hasRole === 'function' && (hasRole('super_admin') || hasRole('admin'))),
     },
     {
       id: 'roles',

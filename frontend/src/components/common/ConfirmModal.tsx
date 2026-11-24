@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { Loader2, X } from 'lucide-react';
 
 export interface ConfirmModalProps {
@@ -41,9 +41,32 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   requiredTextLabel = 'elemento',
 }) => {
   const [confirmationText, setConfirmationText] = React.useState('');
+  const modalRef = useRef<HTMLDivElement>(null);
+  const cancelButtonRef = useRef<HTMLButtonElement>(null);
+  const confirmationInputRef = useRef<HTMLInputElement>(null);
+  const previouslyFocusedRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (isOpen) setConfirmationText('');
+  }, [isOpen, requiredText]);
+
+  // Keep keyboard users inside the open dialog and return focus to the control
+  // that opened it when the dialog closes.
+  useEffect(() => {
+    if (!isOpen) {
+      if (previouslyFocusedRef.current && document.contains(previouslyFocusedRef.current)) {
+        previouslyFocusedRef.current.focus();
+      }
+      previouslyFocusedRef.current = null;
+      return;
+    }
+
+    previouslyFocusedRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (requiredText !== undefined) {
+      confirmationInputRef.current?.focus();
+    } else {
+      cancelButtonRef.current?.focus();
+    }
   }, [isOpen, requiredText]);
 
   useEffect(() => {
@@ -52,6 +75,26 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && !isLoading) {
         onClose();
+        return;
+      }
+
+      if (e.key !== 'Tab' || !modalRef.current) return;
+
+      const focusableElements = Array.from(
+        modalRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])'
+        )
+      );
+      if (!focusableElements.length) return;
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (e.shiftKey && document.activeElement === firstElement) {
+        e.preventDefault();
+        lastElement.focus();
+      } else if (!e.shiftKey && document.activeElement === lastElement) {
+        e.preventDefault();
+        firstElement.focus();
       }
     };
 
@@ -72,6 +115,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       role="dialog"
       aria-modal="true"
       aria-labelledby="confirm-modal-title"
+      aria-describedby={`${testId}-description`}
+      aria-busy={isLoading}
       data-testid={testId}
       className="modal-overlay fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-150"
       style={{
@@ -92,6 +137,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
       }}
     >
       <div
+        ref={modalRef}
         className="modal-content confirmation-side-panel bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 animate-in duration-150"
         style={{
           background: 'white',
@@ -127,13 +173,13 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
               {title}
             </h3>
           </div>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isLoading} aria-label="Cerrar panel">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={isLoading} aria-label="Cerrar ventana de confirmación">
             <X size={16} />
           </button>
         </div>
 
         <div className="flow-side-panel-body">
-          <p style={{ fontSize: '0.875rem', color: '#61726d', lineHeight: 1.5, margin: 0 }}>
+          <p id={`${testId}-description`} style={{ fontSize: '0.875rem', color: '#61726d', lineHeight: 1.5, margin: 0 }}>
             {description}
           </p>
           {requiredText !== undefined && (
@@ -143,6 +189,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
                 <strong style={{ display: 'block', marginTop: '0.25rem', color: '#263c38' }}>{requiredText}</strong>
               </label>
               <input
+                ref={confirmationInputRef}
                 id={`${testId}-confirmation-input`}
                 type="text"
                 className="form-input"
@@ -161,8 +208,12 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
         <div className="flow-side-panel-footer" style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '0.75rem' }}>
           <button
             type="button"
+            ref={cancelButtonRef}
             data-testid={cancelTestId}
-            disabled={isLoading || (requiredText !== undefined && confirmationText.trim() !== requiredText.trim())}
+            // Cancellation must remain available while the destructive action
+            // is being prepared. The exact-name requirement only guards the
+            // confirm action, never the escape hatch.
+            disabled={isLoading}
             onClick={onClose}
             className="border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium px-4 py-2.5 rounded-xl transition-colors"
             style={{
@@ -181,7 +232,8 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
           <button
             type="button"
             data-testid={confirmTestId}
-            disabled={isLoading}
+            disabled={isLoading || (requiredText !== undefined && confirmationText.trim() !== requiredText.trim())}
+            aria-busy={isLoading}
             onClick={onConfirm}
             className={`${
               isDanger

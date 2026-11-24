@@ -546,7 +546,7 @@ export const UsersView: React.FC = () => {
               <button className="btn btn-secondary btn-sm" onClick={requestCloseChannelAccess} disabled={channelsSaving} aria-label="Cerrar">✕</button>
             </div>
             <div className="flow-side-panel-body">
-              {channelsError && <div className="alert alert-danger">{channelsError}</div>}
+              {channelsError && <div role="alert" className="alert alert-danger">{channelsError}</div>}
               {channelsLoading ? (
                 <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>Cargando canales...</p>
               ) : channelOptions.length ? (
@@ -602,7 +602,7 @@ export const UsersView: React.FC = () => {
             <form onSubmit={handleSaveUser} onChangeCapture={() => setUserFormDirty(true)} className="flow-side-panel-form">
               <div className="flow-side-panel-body">
                 {formError && (
-                  <div className="alert alert-danger" style={{ marginBottom: '1rem' }}>{formError}</div>
+                  <div role="alert" className="alert alert-danger" style={{ marginBottom: '1rem' }}>{formError}</div>
                 )}
               <div className="form-group">
                 <label className="form-label">Nombre Completo</label>

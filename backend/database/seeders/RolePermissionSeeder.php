@@ -17,6 +17,8 @@ class RolePermissionSeeder extends Seeder
             // User Management
             ['name' => 'users.view', 'display_name' => 'Ver usuarios', 'module' => 'users'],
             ['name' => 'users.manage', 'display_name' => 'Administrar usuarios', 'module' => 'users'],
+            ['name' => 'contacts.view', 'display_name' => 'Ver contactos externos', 'module' => 'contacts'],
+            ['name' => 'contacts.manage', 'display_name' => 'Importar contactos externos', 'module' => 'contacts'],
 
             // Roles & Permissions
             ['name' => 'roles.view', 'display_name' => 'Ver roles', 'module' => 'roles'],
@@ -115,6 +117,8 @@ class RolePermissionSeeder extends Seeder
         $workspaceAdminPermissions = Permission::whereIn('name', [
             'users.view',
             'users.manage',
+            'contacts.view',
+            'contacts.manage',
             'roles.view',
             'channels.view',
             'channels.manage',

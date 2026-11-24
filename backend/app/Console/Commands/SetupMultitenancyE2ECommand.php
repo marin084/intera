@@ -32,7 +32,7 @@ use Illuminate\Support\Facades\Hash;
 class SetupMultitenancyE2ECommand extends Command
 {
     protected $signature = 'test:setup-multitenancy-e2e
-        {--force : Allow the disposable fixture to be created in APP_ENV=production}';
+        ';
 
     protected $description = 'Creates the disposable two-workspace fixture used by multitenancy E2E tests';
 
@@ -43,8 +43,8 @@ class SetupMultitenancyE2ECommand extends Command
 
     public function handle(): int
     {
-        if (app()->environment('production') && ! $this->option('force')) {
-            $this->components->error('Fixture bloqueado en producción. Ejecuta con --force solo en un entorno desechable de pruebas.');
+        if (app()->environment('production')) {
+            $this->components->error('Fixture bloqueado en producción. Usa APP_ENV=testing o local en un entorno desechable.');
 
             return self::FAILURE;
         }
@@ -60,23 +60,23 @@ class SetupMultitenancyE2ECommand extends Command
             $platform = $this->upsertUser(
                 email: 'e2e.platform@intera.test',
                 name: 'E2E Platform Admin',
-                password: 'E2EPlatformPass@2026',
+                password: $this->fixturePassword('E2E_PLATFORM_PASSWORD'),
                 isPlatformAdmin: true,
             );
             $adminA = $this->upsertUser(
                 email: 'e2e.admin.a@intera.test',
                 name: 'E2E Admin Workspace A',
-                password: 'E2EAdminAPass@2026',
+                password: $this->fixturePassword('E2E_ADMIN_A_PASSWORD'),
             );
             $adminB = $this->upsertUser(
                 email: 'e2e.admin.b@intera.test',
                 name: 'E2E Admin Workspace B',
-                password: 'E2EAdminBPass@2026',
+                password: $this->fixturePassword('E2E_ADMIN_B_PASSWORD'),
             );
             $sharedAgent = $this->upsertUser(
                 email: 'e2e.agent.shared@intera.test',
                 name: 'E2E Shared Agent',
-                password: 'E2ESharedAgentPass@2026',
+                password: $this->fixturePassword('E2E_SHARED_AGENT_PASSWORD'),
             );
 
             $platform->roles()->sync([$roles['super_admin']->id]);
@@ -165,6 +165,17 @@ class SetupMultitenancyE2ECommand extends Command
                 'active_workspace_id' => null,
             ]
         );
+    }
+
+    private function fixturePassword(string $environmentKey): string
+    {
+        $password = (string) env($environmentKey, '');
+
+        if (mb_strlen($password) < 12) {
+            throw new \InvalidArgumentException("{$environmentKey} must contain at least 12 characters.");
+        }
+
+        return $password;
     }
 
     /**

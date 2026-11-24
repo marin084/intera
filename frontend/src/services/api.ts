@@ -1,4 +1,4 @@
-import type { CannedResponse, FlowAnalyticsData, UsersAndSessionsData, FunnelContact, RealtimeData, AgentMetricsData, SavedFunnel, SequentialStepDefinition, Tag } from '../types';
+import type { CannedResponse, ContactDirectoryItem, ContactImportPreview, ContactImportResult, FlowAnalyticsData, UsersAndSessionsData, FunnelContact, RealtimeData, AgentMetricsData, SavedFunnel, SequentialStepDefinition, Tag } from '../types';
 
 const API_URL = import.meta.env.VITE_API_URL || '/api/v1';
 const BASE_URL = API_URL.startsWith('http') ? API_URL.replace(/\/api\/v1\/?$/, '') : '';
@@ -188,6 +188,51 @@ class ApiService {
   // Users
   async getUsers() {
     return this.request<{ data: any[] }>('/users');
+  }
+
+  async getContacts(params: { search?: string; page?: number; per_page?: number } = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.set('search', params.search);
+    if (params.page) query.set('page', String(params.page));
+    if (params.per_page) query.set('per_page', String(params.per_page));
+    const qs = query.toString();
+    return this.request<{
+      data: ContactDirectoryItem[];
+      meta: { current_page: number; last_page: number; per_page: number; total: number };
+    }>(`/contacts${qs ? `?${qs}` : ''}`);
+  }
+
+  async getContact(id: string) {
+    return this.request<{ data: ContactDirectoryItem }>(`/contacts/${encodeURIComponent(id)}`);
+  }
+
+  async getContactsImportPreview(file: File) {
+    const body = new FormData();
+    body.append('file', file);
+    return this.request<{ data: ContactImportPreview }>('/contacts/import/preview', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  async importContacts(file: File, mapping: Record<string, string | null>, destinationChannelId: string | null = null) {
+    const body = new FormData();
+    body.append('file', file);
+    body.append('mapping', JSON.stringify(mapping));
+    if (destinationChannelId) body.append('destination_channel_id', destinationChannelId);
+    return this.request<{ message: string; data: ContactImportResult }>('/contacts/import', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  getContactsExportUrl(params: { search?: string; created_from?: string; created_to?: string } = {}) {
+    const query = new URLSearchParams();
+    if (params.search) query.set('search', params.search);
+    if (params.created_from) query.set('created_from', params.created_from);
+    if (params.created_to) query.set('created_to', params.created_to);
+    const qs = query.toString();
+    return `${API_URL}/contacts/export${qs ? `?${qs}` : ''}`;
   }
 
   async getTeams() {

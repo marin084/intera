@@ -7,10 +7,16 @@ const WORKSPACE_A_ID = '11111111-1111-4111-8111-111111111111';
 const WORKSPACE_B_ID = '22222222-2222-4222-8222-222222222222';
 const CHANNEL_A_KEY = 'wc_pub_e2e_workspace_a_20261120';
 
+function requiredEnvironmentVariable(name: string): string {
+  const value = process.env[name];
+  if (!value) throw new Error(`${name} must be provided for multitenancy E2E tests.`);
+  return value;
+}
+
 const USERS = {
-  platform: { email: 'e2e.platform@intera.test', password: 'E2EPlatformPass@2026' },
-  adminA: { email: 'e2e.admin.a@intera.test', password: 'E2EAdminAPass@2026' },
-  adminB: { email: 'e2e.admin.b@intera.test', password: 'E2EAdminBPass@2026' },
+  platform: { email: 'e2e.platform@intera.test', password: requiredEnvironmentVariable('E2E_PLATFORM_PASSWORD') },
+  adminA: { email: 'e2e.admin.a@intera.test', password: requiredEnvironmentVariable('E2E_ADMIN_A_PASSWORD') },
+  adminB: { email: 'e2e.admin.b@intera.test', password: requiredEnvironmentVariable('E2E_ADMIN_B_PASSWORD') },
 };
 
 async function loginSPA(page: Page, email: string, password: string) {
@@ -80,7 +86,7 @@ async function startPublicConversation(request: APIRequestContext, publicKey: st
 
 test.describe('Multitenancy isolation E2E', () => {
   test.beforeEach(() => {
-    execSync('docker compose exec -T backend php artisan test:setup-multitenancy-e2e --force', {
+    execSync('docker compose exec -T backend php artisan test:setup-multitenancy-e2e', {
       stdio: 'pipe',
     });
   });

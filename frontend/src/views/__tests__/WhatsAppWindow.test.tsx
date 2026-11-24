@@ -4,10 +4,14 @@ import { ConversationsView } from '../ConversationsView';
 import { api } from '../../services/api';
 
 const echoListeners: Record<string, ((event: any) => void)[]> = {};
+const activeWindowExpiresAt = new Date(Date.now() + (20 * 60 * 60 + 30) * 1000).toISOString();
+const refreshedWindowExpiresAt = new Date(Date.now() + (24 * 60 * 60 + 30) * 1000).toISOString();
+const expiredWindowExpiresAt = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => ({
     user: { id: 1, name: 'Admin Conexa', email: 'admin@conexa.ai' },
+    workspace: { id: 'workspace-1', name: 'Workspace 1' },
     hasPermission: () => true,
   }),
 }));
@@ -36,6 +40,7 @@ vi.mock('../../services/api', () => ({
     getConversations: vi.fn(),
     getUsers: vi.fn(),
     getChannels: vi.fn(),
+    getTeams: vi.fn(),
     getConversation: vi.fn(),
     getConversationExecution: vi.fn(),
     markConversationAsRead: vi.fn(),
@@ -76,7 +81,7 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
       is_applicable: true,
       is_open: true,
       last_inbound_at: '2026-11-06T12:00:00Z',
-      expires_at: '2026-11-07T12:00:00Z',
+      expires_at: activeWindowExpiresAt,
       remaining_seconds: 72000,
     },
     unread_count: 0,
@@ -100,7 +105,7 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
       is_applicable: true,
       is_open: false,
       last_inbound_at: '2026-11-04T10:00:00Z',
-      expires_at: '2026-11-05T10:00:00Z',
+      expires_at: expiredWindowExpiresAt,
       remaining_seconds: 0,
     },
   };
@@ -138,8 +143,25 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    const mockLocalStorage = {
+      getItem: vi.fn(() => null),
+      setItem: vi.fn(),
+      removeItem: vi.fn(),
+      clear: vi.fn(),
+    };
+    Object.defineProperty(window, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+      configurable: true,
+    });
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: mockLocalStorage,
+      writable: true,
+      configurable: true,
+    });
     Object.keys(echoListeners).forEach((key) => delete echoListeners[key]);
     (api.getUsers as any).mockResolvedValue({ data: [] });
+    (api.getTeams as any).mockResolvedValue({ data: [] });
     (api.getChannels as any).mockResolvedValue({
       data: [
         { id: 'ch-wa', name: 'WhatsApp Soporte' },
@@ -200,7 +222,8 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
       expect(screen.getByTestId('whatsapp-24h-expired-banner')).toBeInTheDocument();
     });
 
-    expect(screen.getByText(/La conversación se cerró luego de 24 horas del último mensaje del usuario/i)).toBeInTheDocument();
+    expect(screen.getByText(/Ventana de atención de 24 horas de WhatsApp expirada/i)).toBeInTheDocument();
+    expect(screen.getByText(/Haz clic aquí para reabrirla con una plantilla preaprobada de WhatsApp/i)).toBeInTheDocument();
     expect(screen.getByTestId('reopen-with-template-btn')).toBeInTheDocument();
 
     // Verify input and submit buttons are disabled
@@ -312,6 +335,8 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
 
     render(<ConversationsView />);
 
+    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
+
     await waitFor(() => {
       expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
     });
@@ -345,6 +370,8 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
     (api.getConversation as any).mockResolvedValue({ data: closedExpiredConversation });
 
     render(<ConversationsView />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Archivadas/i }));
 
     await waitFor(() => {
       expect(screen.getByTestId('conversation-item')).toBeInTheDocument();
@@ -384,7 +411,7 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
 
     // Simulate incoming Meta message triggering .ConversationUpdated via echo on inbox channel with new remaining_seconds = 86400 (24h 0m)
     act(() => {
-      const callbacks = echoListeners['inbox:.ConversationUpdated'] || [];
+      const callbacks = echoListeners['workspace.workspace-1.inbox:.ConversationUpdated'] || [];
       callbacks.forEach((cb) =>
         cb({
           id: 'conv-wa-active',
@@ -394,7 +421,7 @@ describe('WhatsApp 24-Hour Service Window in ConversationsView', () => {
             is_applicable: true,
             is_open: true,
             last_inbound_at: '2026-11-06T15:00:00Z',
-            expires_at: '2026-11-07T15:00:00Z',
+            expires_at: refreshedWindowExpiresAt,
             remaining_seconds: 86400,
           },
         })

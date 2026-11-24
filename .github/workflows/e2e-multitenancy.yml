@@ -1,0 +1,85 @@
+name: INTERA multitenancy E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'frontend/**'
+      - 'docker-compose.yml'
+      - '.github/workflows/e2e-multitenancy.yml'
+  schedule:
+    - cron: '0 6 * * 1'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intera-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  multitenancy:
+    name: Workspace isolation (local channels only)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium webkit
+
+      - name: Generate ephemeral E2E credentials
+        shell: bash
+        run: |
+          echo "E2E_PLATFORM_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_A_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "E2E_ADMIN_B_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+          echo "E2E_SHARED_AGENT_PASSWORD=$(openssl rand -hex 24)" >> "$GITHUB_ENV"
+
+      - name: Start local stack
+        env:
+          APP_KEY: base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=
+          APP_ENV: testing
+          APP_DEBUG: false
+        run: docker compose up -d --build
+
+      - name: Wait for frontend health
+        run: |
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:3100/health >/dev/null \
+              && curl --fail --silent http://localhost:3100/health/ready >/dev/null \
+              && curl --fail --silent http://localhost:3100/api/health/realtime >/dev/null; then
+              exit 0
+            fi
+            sleep 3
+          done
+          docker compose ps
+          docker compose logs --tail 200 backend frontend
+          exit 1
+
+      - name: Run multitenancy browser tests
+        working-directory: frontend
+        env:
+          E2E_BASE_URL: http://localhost:3100
+        run: npx playwright test e2e/multitenancy-isolation.spec.ts --project=chromium --project=webkit
+
+      - name: Collect stack logs
+        if: always()
+        run: docker compose logs --tail 300 backend reverb frontend
+
+      - name: Stop local stack
+        if: always()
+        run: docker compose down -v

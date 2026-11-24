@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react';
 import { ChannelsView } from '../ChannelsView';
 import { api } from '../../services/api';
+import { ToastProvider } from '../../context/ToastContext';
+
+const renderChannelsView = () => render(<ToastProvider><ChannelsView /></ToastProvider>);
 
 vi.mock('../../context/useAuth', () => ({
   useAuth: () => ({
@@ -64,7 +67,7 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('opens ConfirmModal when clicking Desactivar and cancels without API call', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Webchat Soporte')).toBeInTheDocument();
@@ -89,7 +92,7 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('updates channel status to inactive when confirmed in ConfirmModal', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Webchat Soporte')).toBeInTheDocument();
@@ -108,7 +111,7 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('activates inactive channel directly when clicking Activar', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('WhatsApp Marketing')).toBeInTheDocument();
@@ -123,7 +126,7 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
   });
 
   it('opens ConfirmModal when clicking delete and cancels without deleting', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('WhatsApp Marketing')).toBeInTheDocument();
@@ -158,7 +161,7 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
       .mockRejectedValueOnce(errorWithForce)
       .mockResolvedValueOnce({ message: 'Canal eliminado exitosamente.' } as any);
 
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('WhatsApp Marketing')).toBeInTheDocument();
@@ -169,6 +172,9 @@ describe('ChannelsView Confirmation Modals (ConfirmModal)', () => {
 
     const confirmBtn = screen.getByTestId('confirm-delete-channel-btn');
     expect(confirmBtn).toHaveTextContent('Sí, eliminar canal');
+    fireEvent.change(screen.getByTestId('confirm-delete-channel-modal-confirmation-input'), {
+      target: { value: 'WhatsApp Marketing' },
+    });
     fireEvent.click(confirmBtn);
 
     await waitFor(() => {
@@ -217,7 +223,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('renders inactivity auto-close fields in Create Modal with channel-type defaults', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -247,7 +253,8 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
     expect(closeInput.value).toBe('30');
 
     // Switch back to Webchat: defaults should update back to 10 warning, 15 close
-    const webchatButton = screen.getByRole('button', { name: /Webchat Embebible/i });
+    const dialog = screen.getByRole('dialog');
+    const webchatButton = within(dialog).getByRole('button', { name: /^Webchat\b/i });
     fireEvent.click(webchatButton);
 
     expect(warningInput.value).toBe('10');
@@ -255,7 +262,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('submits inactivity configuration when creating a channel', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -301,7 +308,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('loads existing inactivity configuration in Edit Modal and saves updates', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -344,7 +351,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('toggles visibility of inactivity fields when switch is toggled', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -368,7 +375,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('toggles warning phase with inactivity_warning_enabled checkbox', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -408,7 +415,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('submits inactivity_warning_enabled: false when warning is disabled', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -440,7 +447,7 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
   });
 
   it('renders modal with scrollable body container and fixed sticky header and footer', async () => {
-    render(<ChannelsView />);
+    renderChannelsView();
 
     await waitFor(() => {
       expect(screen.getByText('Canal Webchat Demo')).toBeInTheDocument();
@@ -449,15 +456,14 @@ describe('ChannelsView Inactivity Auto-Close Configuration', () => {
     fireEvent.click(screen.getByRole('button', { name: /Crear Canal/i }));
 
     const dialog = screen.getByRole('dialog');
-    expect(dialog).toHaveClass('overflow-y-auto');
-
     const modalCard = dialog.querySelector('.modal-content');
-    expect(modalCard).toHaveClass('max-h-[90vh]');
-    expect(modalCard).toHaveClass('flex-col');
-    expect(modalCard).toHaveClass('overflow-hidden');
+    expect(modalCard).toHaveClass('channel-side-panel');
 
     const header = dialog.querySelector('.modal-header');
     expect(header).toHaveClass('shrink-0');
+
+    const form = dialog.querySelector('form');
+    expect(form).toHaveClass('overflow-hidden');
 
     const scrollableBody = dialog.querySelector('.overscroll-contain');
     expect(scrollableBody).toHaveClass('overflow-y-auto');

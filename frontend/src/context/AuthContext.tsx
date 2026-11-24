@@ -47,6 +47,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  // A browser can keep the shell mounted after the server-side session expires
+  // (for example after a local container reset). Clear the stale identity so
+  // the app returns to the login screen instead of rendering 401 error states.
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setRoles([]);
+      setPermissions([]);
+      setWorkspace(null);
+      setWorkspaces([]);
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', handleUnauthorized);
+  }, []);
+
   const login = async (credentials: { email: string; password: string }) => {
     const res = await api.login(credentials);
     setUser(res.user);

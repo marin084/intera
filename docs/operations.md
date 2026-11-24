@@ -1,12 +1,14 @@
-# Conexa — Operations Manual
+# INTERA — Operations Manual
 
-Este documento detalla los procedimientos estándar para la administración, supervisión, backup, restore, actualización y mantenimiento del stack productivo de Conexa.
+Este documento detalla los procedimientos estándar para la administración,
+supervisión, backup, restore, actualización y mantenimiento del stack
+productivo de INTERA.
 
 ---
 
 ## 1. Arquitectura de Servicios y Responsabilidades
 
-Conexa opera mediante contenedores Docker coordinados por Docker Compose:
+INTERA opera mediante contenedores Docker coordinados por Docker Compose:
 
 | Servicio | Imagen / Runtime | Responsabilidad | Exposición |
 |---|---|---|---|
@@ -103,7 +105,7 @@ Respuesta esperada (HTTP 200):
 ```json
 {
   "status": "ok",
-  "app": "Conexa",
+  "app": "Intera",
   "version": "1.0.0",
   "timestamp": "2026-10-04T21:00:00Z"
 }
@@ -146,7 +148,7 @@ PostgreSQL reside en el volumen Docker `postgres_data`. Para generar un backup s
 
 ### Características del Backup:
 - Formato: Snapshot binario comprimido de PostgreSQL (`pg_dump -Fc`).
-- Destino: `./backups/conexa_<database>_<timestamp>.dump` (configurable vía `BACKUP_DIR`).
+- Destino: `./backups/intera_<database>_<timestamp>.dump` (configurable vía `BACKUP_DIR`).
 - Permisos: `600` (lectura/escritura exclusiva para el usuario).
 - Checksum: Archivo `.sha256` generado automáticamente.
 - Metadatos: Archivo `.meta` con timestamp UTC, versión de la app, tamaño y checksum.
@@ -161,7 +163,7 @@ PostgreSQL reside en el volumen Docker `postgres_data`. Para generar un backup s
 
 ### Ejecución Manual Interactiva:
 ```bash
-./scripts/restore.sh ./backups/conexa_conexa_20261004_120000Z.dump
+./scripts/restore.sh ./backups/intera_intera_20261004_120000Z.dump
 ```
 El script solicitará confirmación explícita escribiendo `RESTORE` en mayúsculas antes de proceder.
 
@@ -238,7 +240,7 @@ Si la release fallida modificó irreversiblemente la estructura de datos:
 1. Regresar el código al tag anterior (`git checkout tags/v1.0.0`).
 2. Restaurar el backup de base de datos generado inmediatamente antes del upgrade:
    ```bash
-   ./scripts/restore.sh ./backups/conexa_conexa_<timestamp_previo>.dump
+   ./scripts/restore.sh ./backups/intera_intera_<timestamp_previo>.dump
    ```
 3. Reconstruir e iniciar servicios (`docker compose build && docker compose up -d`).
 4. Verificar salud del aplicativo.
@@ -247,7 +249,7 @@ Si la release fallida modificó irreversiblemente la estructura de datos:
 
 ## 9. Scheduler y Mantenimiento Periódico
 
-El contenedor `conexa_scheduler` ejecuta continuamente `php artisan schedule:work`.
+El contenedor `intera_scheduler` ejecuta continuamente `php artisan schedule:work`.
 
 Tareas programadas configuradas:
 - `webchat:sessions:prune`: Ejecución diaria. Elimina sesiones de Webchat expiradas según el umbral `WEBCHAT_SESSION_TTL_DAYS` (por defecto 30 días) para evitar crecimiento innecesario de la tabla `webchat_sessions`.

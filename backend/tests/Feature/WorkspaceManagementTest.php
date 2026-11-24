@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\AgentPresenceSession;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Workspace;
@@ -76,6 +77,46 @@ class WorkspaceManagementTest extends TestCase
         $this->actingAs($owner, 'sanctum')->patchJson("/api/v1/workspaces/{$workspace->id}/members/{$member->id}", ['role' => 'supervisor'])->assertOk()->assertJsonPath('data.role.name', 'supervisor');
         $this->actingAs($owner, 'sanctum')->deleteJson("/api/v1/workspaces/{$workspace->id}/members/{$member->id}")->assertOk()->assertJsonPath('data.is_active', false);
         $this->assertDatabaseHas('workspace_user', ['workspace_id' => $workspace->id, 'user_id' => $member->id, 'is_active' => false]);
+    }
+
+    public function test_deactivating_current_membership_ends_presence_and_selects_another_workspace(): void
+    {
+        $platformAdmin = $this->makeUser('platform-lifecycle@example.com', true);
+        $workspaceA = Workspace::create(['name' => 'Lifecycle A', 'slug' => 'lifecycle-a', 'initial_owner_id' => $platformAdmin->id]);
+        $workspaceB = Workspace::create(['name' => 'Lifecycle B', 'slug' => 'lifecycle-b']);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $agentRole = Role::where('name', 'agent')->firstOrFail();
+
+        WorkspaceUser::create(['workspace_id' => $workspaceA->id, 'user_id' => $platformAdmin->id, 'role_id' => $adminRole->id, 'is_active' => true]);
+
+        $member = $this->makeUser('multi-workspace-lifecycle@example.com');
+        WorkspaceUser::create(['workspace_id' => $workspaceA->id, 'user_id' => $member->id, 'role_id' => $agentRole->id, 'is_active' => true]);
+        WorkspaceUser::create(['workspace_id' => $workspaceB->id, 'user_id' => $member->id, 'role_id' => $agentRole->id, 'is_active' => true]);
+        $member->forceFill(['active_workspace_id' => $workspaceA->id])->save();
+
+        $activePresence = AgentPresenceSession::create([
+            'workspace_id' => $workspaceA->id,
+            'user_id' => $member->id,
+            'session_key' => hash('sha256', 'lifecycle-a'),
+            'started_at' => now()->subMinute(),
+            'last_heartbeat_at' => now(),
+        ]);
+        $otherWorkspacePresence = AgentPresenceSession::create([
+            'workspace_id' => $workspaceB->id,
+            'user_id' => $member->id,
+            'session_key' => hash('sha256', 'lifecycle-b'),
+            'started_at' => now()->subMinute(),
+            'last_heartbeat_at' => now(),
+        ]);
+
+        $this->actingAs($platformAdmin, 'sanctum')
+            ->deleteJson("/api/v1/workspaces/{$workspaceA->id}/members/{$member->id}")
+            ->assertOk();
+
+        $this->assertFalse((bool) $member->workspaceMemberships()->where('workspace_id', $workspaceA->id)->value('is_active'));
+        $this->assertSame((string) $workspaceB->id, (string) $member->fresh()->active_workspace_id);
+        $this->assertNotNull($activePresence->fresh()->ended_at, 'Presence in the revoked workspace must end immediately.');
+        $this->assertNull($otherWorkspacePresence->fresh()->ended_at, 'Presence in another workspace must remain active.');
     }
 
     public function test_workspace_member_lookup_suggests_the_existing_workspace_role(): void

@@ -743,6 +743,12 @@ body {
   min-width: 0;
 }
 
+/* Keep quick-period controls aligned with the select fields in dashboard filters. */
+.content-body--analytics [data-testid='date-range-buttons'] .btn {
+  box-sizing: border-box;
+  min-height: 42px;
+}
+
 .content-body--dashboards .funnel-step-config-main,
 .content-body--dashboards .funnel-step-config-label,
 .content-body--dashboards .funnel-step-metric-title,

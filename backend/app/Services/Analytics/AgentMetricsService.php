@@ -25,6 +25,7 @@ class AgentMetricsService
      */
     public function getAgentMetrics(array $filters = []): array
     {
+        $workspaceId = $this->currentWorkspaceId();
         $from = ! empty($filters['from']) ? Carbon::parse($filters['from'])->startOfDay() : now()->startOfDay();
         $to = ! empty($filters['to']) ? Carbon::parse($filters['to'])->endOfDay() : now()->endOfDay();
         $channelId = ! empty($filters['channel_id']) ? (string) $filters['channel_id'] : null;
@@ -32,7 +33,6 @@ class AgentMetricsService
         $onlineOnly = ! empty($filters['online_only']) && filter_var($filters['online_only'], FILTER_VALIDATE_BOOLEAN);
 
         // Fetch users who are agents, supervisors or admins
-        $workspaceId = app()->bound('current_workspace_id') ? (string) app('current_workspace_id') : null;
         $agentsQuery = User::query()
             ->with($workspaceId !== null ? ['workspaceMemberships.role'] : ['roles'])
             ->where('is_active', true)
@@ -168,6 +168,8 @@ class AgentMetricsService
         int $totalTeamClosed,
         ?int $connectedSeconds = null
     ): array {
+        $workspaceId = $this->currentWorkspaceId();
+
         // Active assigned conversations
         $activeCount = Conversation::query()
             ->where('assigned_user_id', $agent->id)
@@ -188,6 +190,7 @@ class AgentMetricsService
         // Assigned conversations in date range (from assignments or direct conversation creation)
         $assignedCount = ConversationAssignment::query()
             ->join('conversations', 'conversation_assignments.conversation_id', '=', 'conversations.id')
+            ->where('conversations.workspace_id', $workspaceId)
             ->where('conversation_assignments.assigned_user_id', $agent->id)
             ->whereBetween('conversation_assignments.assigned_at', [$from, $to])
             ->when($channelId, fn (Builder $q) => $q->where('conversations.channel_id', $channelId))
@@ -236,6 +239,7 @@ class AgentMetricsService
         // First response time calculation
         $assignments = ConversationAssignment::query()
             ->join('conversations', 'conversation_assignments.conversation_id', '=', 'conversations.id')
+            ->where('conversations.workspace_id', $workspaceId)
             ->where('conversation_assignments.assigned_user_id', $agent->id)
             ->whereBetween('conversation_assignments.assigned_at', [$from, $to])
             ->when($channelId, fn (Builder $q) => $q->where('conversations.channel_id', $channelId))
@@ -456,6 +460,7 @@ class AgentMetricsService
      */
     public function exportConversationsDetail(array $filters = []): string
     {
+        $workspaceId = $this->currentWorkspaceId();
         $from = ! empty($filters['from']) ? Carbon::parse($filters['from'])->startOfDay() : now()->startOfDay();
         $to = ! empty($filters['to']) ? Carbon::parse($filters['to'])->endOfDay() : now()->endOfDay();
         $channelId = ! empty($filters['channel_id']) ? (string) $filters['channel_id'] : null;
@@ -463,6 +468,7 @@ class AgentMetricsService
 
         $query = Conversation::query()
             ->with(['contact', 'channel', 'assignedUser'])
+            ->where('workspace_id', $workspaceId)
             ->whereNotNull('assigned_user_id')
             ->whereBetween('created_at', [$from, $to])
             ->when($channelId, fn (Builder $q) => $q->where('channel_id', $channelId))
@@ -538,6 +544,22 @@ class AgentMetricsService
         fclose($handle);
 
         return $csv ?: '';
+    }
+
+    /**
+     * Return the workspace selected by the authenticated request.
+     */
+    private function currentWorkspaceId(): string
+    {
+        $workspaceId = app()->bound('current_workspace_id')
+            ? (string) app('current_workspace_id')
+            : '';
+
+        if ($workspaceId === '') {
+            throw new \LogicException('Agent metrics require an active workspace context.');
+        }
+
+        return $workspaceId;
     }
 
     /**

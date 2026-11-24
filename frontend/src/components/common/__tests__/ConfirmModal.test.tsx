@@ -124,4 +124,99 @@ describe('ConfirmModal Component', () => {
     const btn = screen.getByTestId('danger-btn');
     expect(btn.className).toContain('bg-rose-600');
   });
+
+  it('requires the exact text before enabling a destructive confirmation', () => {
+    render(
+      <ConfirmModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Eliminar flujo"
+        description="Esta acción no se puede deshacer."
+        requiredText="Flujo de ventas"
+        requiredTextLabel="flujo"
+        confirmTestId="confirm-btn"
+        cancelTestId="cancel-btn"
+      />
+    );
+
+    const confirmButton = screen.getByTestId('confirm-btn');
+    const cancelButton = screen.getByTestId('cancel-btn');
+    const input = screen.getByTestId('confirm-modal-confirmation-input');
+
+    expect(input).toHaveFocus();
+    expect(confirmButton).toBeDisabled();
+    expect(cancelButton).toBeEnabled();
+
+    fireEvent.change(input, { target: { value: 'Flujo incorrecto' } });
+    expect(confirmButton).toBeDisabled();
+
+    fireEvent.change(input, { target: { value: 'Flujo de ventas' } });
+    expect(confirmButton).toBeEnabled();
+  });
+
+  it('announces the dialog description and restores focus to the opener', () => {
+    const opener = document.createElement('button');
+    opener.type = 'button';
+    document.body.appendChild(opener);
+    opener.focus();
+
+    const { rerender } = render(
+      <ConfirmModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Confirmar acción"
+        description="La acción requiere confirmación."
+        testId="accessibility-modal"
+      />
+    );
+
+    const dialog = screen.getByTestId('accessibility-modal');
+    expect(dialog).toHaveAttribute('aria-describedby', 'accessibility-modal-description');
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByTestId('cancel-modal-btn')).toHaveFocus();
+
+    rerender(
+      <ConfirmModal
+        isOpen={false}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Confirmar acción"
+        description="La acción requiere confirmación."
+        testId="accessibility-modal"
+      />
+    );
+
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it('keeps keyboard focus inside the dialog', () => {
+    render(
+      <ConfirmModal
+        isOpen={true}
+        onClose={vi.fn()}
+        onConfirm={vi.fn()}
+        title="Confirmar acción"
+        description="Descripción"
+        confirmTestId="confirm-btn"
+        cancelTestId="cancel-btn"
+      />
+    );
+
+    const confirmButton = screen.getByTestId('confirm-btn');
+    const cancelButton = screen.getByTestId('cancel-btn');
+    const closeButton = screen.getByRole('button', { name: 'Cerrar ventana de confirmación' });
+
+    confirmButton.focus();
+    fireEvent.keyDown(window, { key: 'Tab' });
+    expect(closeButton).toHaveFocus();
+
+    closeButton.focus();
+    fireEvent.keyDown(window, { key: 'Tab', shiftKey: true });
+    expect(confirmButton).toHaveFocus();
+
+    cancelButton.focus();
+  });
 });

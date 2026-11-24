@@ -44,13 +44,13 @@ describe('useInboxNotifications', () => {
     }
     (window as any).Notification = DefaultMockNotification;
 
-    document.title = 'Conexa';
+    document.title = 'Intera';
   });
 
   afterEach(() => {
     (window as any).Notification = originalNotification;
     (window as any).AudioContext = originalAudioContext;
-    document.title = 'Conexa';
+    document.title = 'Intera';
     vi.restoreAllMocks();
   });
 
@@ -89,22 +89,22 @@ describe('useInboxNotifications', () => {
       { initialProps: { count: 0 } }
     );
 
-    expect(document.title).toBe('Conexa');
+    expect(document.title).toBe('Intera');
 
     rerender({ count: 3 });
-    expect(document.title).toBe('(3) Conexa — Bandeja de Entrada');
+    expect(document.title).toBe('(3) Intera — Bandeja de Entrada');
 
     rerender({ count: 12 });
-    expect(document.title).toBe('(12) Conexa — Bandeja de Entrada');
+    expect(document.title).toBe('(12) Intera — Bandeja de Entrada');
 
     rerender({ count: 0 });
-    expect(document.title).toBe('Conexa');
+    expect(document.title).toBe('Intera');
 
     rerender({ count: 5 });
-    expect(document.title).toBe('(5) Conexa — Bandeja de Entrada');
+    expect(document.title).toBe('(5) Intera — Bandeja de Entrada');
 
     unmount();
-    expect(document.title).toBe('Conexa');
+    expect(document.title).toBe('Intera');
   });
 
   it('requests desktop notification permission safely and updates state', async () => {
